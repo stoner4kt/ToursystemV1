@@ -33,26 +33,18 @@
       <div class="login-tagline">Fleet &amp; Inspection Management</div>
 
       <div id="panel-login">
-        <div style="margin-bottom:20px">
+        <div style="margin-bottom:14px">
           <label for="email" style="font-size:.84rem;font-weight:600;color:#1e293b;display:block">Email Address</label>
           <input type="email" id="email" class="form-control" placeholder="you@example.com" autocomplete="email" required>
         </div>
-        <button class="btn-magic" id="btn-magic-link">Send Magic Link</button>
+        <div style="margin-bottom:20px">
+          <label for="password" style="font-size:.84rem;font-weight:600;color:#1e293b;display:block">Password</label>
+          <input type="password" id="password" class="form-control" placeholder="Enter your password" autocomplete="current-password" required>
+        </div>
+        <button class="btn-magic" id="btn-login">Sign In</button>
         <a href="demo.html" class="btn-magic" style="display:block;text-align:center;text-decoration:none;margin-top:10px;background:#1a3a5c;color:#fff">Open Client Demo Mode</a>
         <div id="msg"></div>
-        <div class="powered">Secured by Supabase Auth &nbsp;·&nbsp; No password required</div>
-      </div>
-
-      <div id="panel-sent" style="display:none; text-align:center;">
-        <div style="font-size:3rem; margin-bottom:12px">📬</div>
-        <h2 style="color:#0f2744; margin-bottom:8px">Check your inbox</h2>
-        <p style="color:#64748b; font-size:.9rem; margin-bottom:20px">
-          We sent a login link to <strong id="sent-email"></strong>.<br>
-          Click it to sign in — no password needed.
-        </p>
-        <button class="btn-magic" style="background:#1a3a5c;color:#fff" onclick="document.getElementById('panel-sent').style.display='none'; document.getElementById('panel-login').style.display='block'">
-          Use a different email
-        </button>
+        <div class="powered">Secured by Supabase Auth &nbsp;·&nbsp; Sign in only (account creation disabled)</div>
       </div>
     </div>
   </div>
@@ -73,7 +65,6 @@
         });
     });
 
-    // Handle magic link token on page load (when user clicks email link)
     sb.auth.onAuthStateChange(async (event, session) => {
       if (event === 'SIGNED_IN' && session) {
         const { data } = await sb.from('profiles').select('role').eq('id', session.user.id).single();
@@ -81,26 +72,21 @@
       }
     });
 
-    document.getElementById('btn-magic-link').addEventListener('click', async () => {
+    document.getElementById('btn-login').addEventListener('click', async () => {
       const email = document.getElementById('email').value.trim();
-      if (!email) { showMsg('Please enter your email address.', 'error'); return; }
-      const btn = document.getElementById('btn-magic-link');
-      btn.disabled = true; btn.textContent = 'Sending…';
+      const password = document.getElementById('password').value;
+      if (!email || !password) { showMsg('Please enter both email and password.', 'error'); return; }
+      const btn = document.getElementById('btn-login');
+      btn.disabled = true; btn.textContent = 'Signing in…';
       msg.className = ''; msg.style.display = 'none';
 
-      const { error } = await sb.auth.signInWithOtp({
+      const { error } = await sb.auth.signInWithPassword({
         email,
-        options: {
-          emailRedirectTo: window.location.origin + '/login.html',
-        }
+        password
       });
 
-      btn.disabled = false; btn.textContent = 'Send Magic Link';
+      btn.disabled = false; btn.textContent = 'Sign In';
       if (error) { showMsg(error.message, 'error'); return; }
-
-      document.getElementById('sent-email').textContent = email;
-      document.getElementById('panel-login').style.display = 'none';
-      document.getElementById('panel-sent').style.display  = 'block';
     });
 
     function showMsg(text, type) {
