@@ -6,8 +6,8 @@
 const CONFIG = {
   // ── Supabase ─────────────────────────────────────────────
   // https://app.supabase.com → Your Project → Settings → API
-  SUPABASE_URL: 'https://YOUR_PROJECT_ID.supabase.co',
-  SUPABASE_ANON_KEY: 'YOUR_SUPABASE_ANON_KEY',
+  SUPABASE_URL: 'https://jxsesdcwdjrxydkvhpsh.supabase.co',
+  SUPABASE_ANON_KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp4c2VzZGN3ZGpyeHlka3ZocHNoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc5MTAyNDEsImV4cCI6MjA5MzQ4NjI0MX0.IKbWP2e29tZDPYfafhI72f-DQ8EjllmldplP3jv04tM',
 
   // ── Cloudinary ───────────────────────────────────────────
   // https://cloudinary.com/console
