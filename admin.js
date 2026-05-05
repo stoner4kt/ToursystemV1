@@ -41,6 +41,54 @@ async function loadDriverOptions() {
   });
 }
 
+
+async function inviteDriver(event) {
+  event.preventDefault();
+  const nameInput = document.getElementById('driver-invite-name');
+  const emailInput = document.getElementById('driver-invite-email');
+  const msg = document.getElementById('driver-invite-msg');
+  const submitBtn = event.target.querySelector('button[type="submit"]');
+
+  const fullName = nameInput.value.trim();
+  const email = emailInput.value.trim().toLowerCase();
+
+  if (!fullName || !email) {
+    msg.style.color = 'var(--red)';
+    msg.textContent = 'Please enter driver name and email.';
+    return;
+  }
+
+  submitBtn.disabled = true;
+  submitBtn.textContent = 'Sending…';
+  msg.style.color = 'var(--text-muted)';
+  msg.textContent = 'Sending invitation link...';
+
+  try {
+    const { error } = await sb.auth.signInWithOtp({
+      email,
+      options: {
+        shouldCreateUser: true,
+        data: { full_name: fullName, role: 'driver' },
+        emailRedirectTo: `${window.location.origin}/inspection.html`,
+      },
+    });
+
+    if (error) throw error;
+
+    msg.style.color = 'var(--green)';
+    msg.textContent = 'Invite sent. The driver can open the magic link from their email to log in.';
+    nameInput.value = '';
+    emailInput.value = '';
+    await loadDriverOptions();
+  } catch (err) {
+    msg.style.color = 'var(--red)';
+    msg.textContent = err?.message || 'Failed to send driver invite.';
+  } finally {
+    submitBtn.disabled = false;
+    submitBtn.textContent = 'Send Invite Link';
+  }
+}
+
 async function renderCalendar() {
   const year  = calDate.getFullYear();
   const month = calDate.getMonth();
@@ -526,6 +574,7 @@ async function downloadPDF(inspectionId) {
   document.getElementById('admin-name').textContent = currentProfile?.name || 'Admin';
   document.getElementById('btn-signout')?.addEventListener('click', signOut);
   document.querySelector('[data-tab="calendar"]')?.click();
+  document.getElementById('form-driver-invite')?.addEventListener('submit', inviteDriver);
   updateSyncBadge();
 })();
 
