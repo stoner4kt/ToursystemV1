@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#0f2744">
+  <title>TransRoute — Admin Login</title>
+  <link rel="manifest" href="manifest.json">
+  <link rel="stylesheet" href="style.css">
+  <style>
+    body { background: linear-gradient(145deg,#0f2744 0%,#1a3a5c 55%,#1a4a7a 100%); }
+    .login-bg { min-height: 100dvh; display:flex; align-items:center; justify-content:center; padding:24px; }
+    .login-card { background:#fff; border-radius:18px; padding:40px 28px; width:100%; max-width:420px; box-shadow:0 20px 60px rgba(0,0,0,.35); }
+    .login-logo { font-size:2.2rem; font-weight:900; color:#0f2744; letter-spacing:-1px; margin-bottom:4px; }
+    .login-logo span { color:#f59e0b; }
+    .login-tagline { font-size:.87rem; color:#64748b; margin-bottom:24px; }
+    .form-group { margin-bottom:14px; }
+    .field-label { font-size:.84rem; font-weight:600; color:#1e293b; display:block; margin-bottom:6px; }
+    .form-control { width:100%; padding:12px 14px; border:1.5px solid #d1dce8; border-radius:10px; font-size:1rem; }
+    .form-control:focus { outline:none; border-color:#1a3a5c; box-shadow:0 0 0 3px rgba(26,58,92,.12); }
+    .actions { display:grid; gap:10px; margin-top:6px; }
+    .btn { width:100%; padding:13px; font-size:1rem; font-weight:700; border:none; border-radius:10px; cursor:pointer; transition:.15s; }
+    .btn:active { transform:scale(.98); }
+    .btn:disabled { opacity:.6; cursor:not-allowed; }
+    .btn-primary { background:#f59e0b; color:#0f2744; }
+    .btn-primary:hover { background:#d97706; }
+    .btn-secondary { background:#1a3a5c; color:#fff; }
+    .btn-secondary:hover { background:#102741; }
+    #msg { margin-top:12px; padding:12px 16px; border-radius:10px; font-size:.88rem; display:none; }
+    #msg.success { background:#d1fae5; color:#065f46; display:block; }
+    #msg.error   { background:#fee2e2; color:#991b1b; display:block; }
+    .powered { margin-top:20px; font-size:.74rem; color:#94a3b8; text-align:center; }
+  </style>
+</head>
+<body>
+  <div class="login-bg">
+    <div class="login-card">
+      <div class="login-logo">Trans<span>Route</span></div>
+      <div class="login-tagline">Admin access for Fleet Dashboard</div>
+
+      <form id="admin-login-form" novalidate>
+        <div class="form-group">
+          <label class="field-label" for="email">Admin Email</label>
+          <input type="email" id="email" class="form-control" placeholder="admin@example.com" autocomplete="email" required>
+        </div>
+        <div class="form-group">
+          <label class="field-label" for="password">Password</label>
+          <input type="password" id="password" class="form-control" placeholder="Enter your password" autocomplete="current-password" required>
+        </div>
+
+        <div class="actions">
+          <button type="submit" class="btn btn-primary" id="btn-login">Login</button>
+          <button type="button" class="btn btn-secondary" id="btn-forgot-password">Forgot Password</button>
+        </div>
+      </form>
+
+      <div id="msg" role="alert" aria-live="polite"></div>
+      <div class="powered">Supabase Email/Password authentication (Admin only)</div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+  <script src="config.js"></script>
+  <script src="admin-login.js"></script>
+</body>
+</html>

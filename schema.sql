@@ -117,21 +117,34 @@ ALTER TABLE public.vehicles    ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.bookings    ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.inspections ENABLE ROW LEVEL SECURITY;
 
+-- Admin helper (avoids recursive RLS policy checks)
+CREATE OR REPLACE FUNCTION public.is_admin()
+RETURNS BOOLEAN
+LANGUAGE sql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+  SELECT EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND role = 'admin');
+$$;
+
 -- profiles: users see their own; admins see all
 CREATE POLICY "profiles_self"  ON public.profiles FOR SELECT
   USING (auth.uid() = id);
 CREATE POLICY "profiles_admin" ON public.profiles FOR ALL
-  USING (EXISTS (SELECT 1 FROM public.profiles p WHERE p.id = auth.uid() AND p.role = 'admin'));
+  USING (public.is_admin())
+  WITH CHECK (public.is_admin());
 
 -- vehicles: all authenticated users can read; only admins can write
 CREATE POLICY "vehicles_read"  ON public.vehicles FOR SELECT TO authenticated USING (true);
 CREATE POLICY "vehicles_admin" ON public.vehicles FOR ALL
-  USING (EXISTS (SELECT 1 FROM public.profiles p WHERE p.id = auth.uid() AND p.role = 'admin'));
+  USING (public.is_admin())
+  WITH CHECK (public.is_admin());
 
 -- bookings: all authenticated users can read; only admins can write
 CREATE POLICY "bookings_read"  ON public.bookings FOR SELECT TO authenticated USING (true);
 CREATE POLICY "bookings_admin" ON public.bookings FOR ALL
-  USING (EXISTS (SELECT 1 FROM public.profiles p WHERE p.id = auth.uid() AND p.role = 'admin'));
+  USING (public.is_admin())
+  WITH CHECK (public.is_admin());
 
 -- inspections: drivers see their own; admins see all
 CREATE POLICY "inspections_own"   ON public.inspections FOR SELECT
@@ -141,7 +154,8 @@ CREATE POLICY "inspections_own"   ON public.inspections FOR SELECT
 CREATE POLICY "inspections_insert" ON public.inspections FOR INSERT
   WITH CHECK (auth.uid() IS NOT NULL);
 CREATE POLICY "inspections_admin"  ON public.inspections FOR ALL
-  USING (EXISTS (SELECT 1 FROM public.profiles p WHERE p.id = auth.uid() AND p.role = 'admin'));
+  USING (public.is_admin())
+  WITH CHECK (public.is_admin());
 
 -- ── SAMPLE SEED DATA (optional — delete if not needed) ────────
 INSERT INTO public.vehicles (registration_no, model, make, year, current_mileage, next_service_km, status)
