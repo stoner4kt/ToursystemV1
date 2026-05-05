@@ -26,9 +26,10 @@ export default {
         payload.invoice_no || '',
         payload.client_name || '',
         payload.route || '',
-        payload.tour_date || '',
-        payload.passengers ?? '',
-        payload.amount ?? '',
+        payload.start_date || '',
+        payload.end_date || '',
+        payload.assigned_driver_id || '',
+        payload.assigned_vehicle_reg || '',
         payload.status || '',
         payload.notes || '',
       ];

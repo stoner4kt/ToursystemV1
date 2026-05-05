@@ -11,7 +11,8 @@ document.querySelectorAll('.tab-btn').forEach((btn) => {
     btn.classList.add('active');
     document.getElementById(`tab-${target}`)?.classList.add('active');
     if (target === 'calendar') renderCalendar();
-    if (target === 'fleet') { loadFleet(); loadDrivers(); }
+    if (target === 'fleet') { loadFleet(); }
+    if (target === 'drivers') loadDriversTab();
     if (target === 'reports')  loadReports();
   });
 });
@@ -41,7 +42,7 @@ async function loadDrivers() {
     const status = d.is_active ? 'Active' : 'Inactive';
     const completed = (inspections || []).filter(i => i.driver_id === d.driver_id).length;
     const regs = (vehicles || []).filter(v => v.assigned_driver_id === d.driver_id).map(v => v.registration_no);
-    const upcoming = (bookings || []).filter(b => b.tour_date >= today && b.status !== 'cancelled').length;
+    const upcoming = (bookings || []).filter(b => b.start_date >= today && b.status !== 'cancelled').length;
     return `<tr><td>${d.name}</td><td>${d.driver_id}</td><td>${status}</td><td>${completed}</td><td>${upcoming}</td></tr>`;
   }).join('') || '<tr><td colspan="5">No drivers found.</td></tr>';
 }
@@ -109,9 +110,7 @@ async function inviteDriver(event) {
     msg.textContent = 'Invite sent. The driver can open the magic link from their email to log in.';
     nameInput.value = '';
     emailInput.value = '';
-    await loadDriverOptions();
-loadDrivers();
-  } catch (err) {
+      } catch (err) {
     msg.style.color = 'var(--red)';
     msg.textContent = err?.message || 'Failed to send driver invite.';
   } finally {
@@ -131,8 +130,8 @@ async function renderCalendar() {
   const from = new Date(year, month, 1).toISOString().split('T')[0];
   const to   = new Date(year, month + 1, 0).toISOString().split('T')[0];
   const { data } = await sb.from('bookings')
-    .select('*').gte('tour_date', from).lte('tour_date', to)
-    .order('tour_date');
+    .select('*').lte('start_date', to).gte('end_date', from)
+    .order('start_date');
   allBookings = data || [];
 
   // Build calendar grid
@@ -141,7 +140,7 @@ async function renderCalendar() {
   const lastDay  = new Date(year, month + 1, 0).getDate();
   const today    = new Date();
 
-  const bookingDates = new Set(allBookings.map((b) => b.tour_date));
+  const bookingDates = new Set(allBookings.map((b) => b.start_date));
   grid.innerHTML = '';
 
   // Day-name headers
@@ -178,7 +177,7 @@ async function renderCalendar() {
 function showBookingsForDate(dateStr, cell) {
   document.querySelectorAll('.cal-day.selected').forEach((el) => el.classList.remove('selected'));
   cell.classList.add('selected');
-  const dayBookings = allBookings.filter((b) => b.tour_date === dateStr);
+  const dayBookings = allBookings.filter((b) => b.start_date === dateStr);
   const container   = document.getElementById('day-bookings');
 
   if (dayBookings.length === 0) {
@@ -190,7 +189,7 @@ function showBookingsForDate(dateStr, cell) {
       <div class="booking-dot" style="background:${b.status==='confirmed'?'var(--green)':b.status==='cancelled'?'var(--red)':'var(--amber)'}"></div>
       <div class="booking-info">
         <div class="booking-route">${b.client_name} — ${b.route || 'Route TBC'}</div>
-        <div class="booking-meta">${b.invoice_no} · ${b.passengers||1} pax · ${b.amount ? 'R'+Number(b.amount).toLocaleString('en-ZA') : '—'}</div>
+        <div class="booking-meta">${b.invoice_no} · ${b.assigned_driver_id || 'Unassigned driver'} · ${b.assigned_vehicle_reg || 'Unassigned vehicle'}</div>
       </div>
       <div class="d-flex" style="display:flex;gap:6px;align-items:center">
         ${statusBadge(b.status)}
@@ -228,9 +227,10 @@ function resetBookingForm() {
   document.getElementById('booking-invoice').value  = `INV-${Date.now().toString().slice(-6)}`;
   document.getElementById('booking-client').value   = '';
   document.getElementById('booking-route').value    = '';
-  document.getElementById('booking-date').value     = '';
-  document.getElementById('booking-pax').value      = '1';
-  document.getElementById('booking-amount').value   = '';
+  document.getElementById('booking-start-date').value     = '';
+  document.getElementById('booking-end-date').value       = '';
+  document.getElementById('booking-driver').value         = '';
+  document.getElementById('booking-vehicle').value        = '';
   document.getElementById('booking-status').value   = 'pending';
   document.getElementById('booking-notes').value    = '';
 }
@@ -242,9 +242,10 @@ async function openEditBooking(id) {
   document.getElementById('booking-invoice').value  = data.invoice_no;
   document.getElementById('booking-client').value   = data.client_name;
   document.getElementById('booking-route').value    = data.route || '';
-  document.getElementById('booking-date').value     = data.tour_date;
-  document.getElementById('booking-pax').value      = data.passengers || 1;
-  document.getElementById('booking-amount').value   = data.amount || '';
+  document.getElementById('booking-start-date').value     = data.start_date;
+  document.getElementById('booking-end-date').value       = data.end_date;
+  document.getElementById('booking-driver').value         = data.assigned_driver_id || '';
+  document.getElementById('booking-vehicle').value        = data.assigned_vehicle_reg || '';
   document.getElementById('booking-status').value   = data.status;
   document.getElementById('booking-notes').value    = data.notes || '';
   document.getElementById('modal-booking-title').textContent = 'Edit Booking';
@@ -258,9 +259,10 @@ document.getElementById('form-booking')?.addEventListener('submit', async (e) =>
     invoice_no:  document.getElementById('booking-invoice').value.trim(),
     client_name: document.getElementById('booking-client').value.trim(),
     route:       document.getElementById('booking-route').value.trim(),
-    tour_date:   document.getElementById('booking-date').value,
-    passengers:  parseInt(document.getElementById('booking-pax').value) || 1,
-    amount:      parseFloat(document.getElementById('booking-amount').value) || null,
+    start_date:  document.getElementById('booking-start-date').value,
+    end_date:    document.getElementById('booking-end-date').value,
+    assigned_driver_id: document.getElementById('booking-driver').value || null,
+    assigned_vehicle_reg: document.getElementById('booking-vehicle').value || null,
     status:      document.getElementById('booking-status').value,
     notes:       document.getElementById('booking-notes').value.trim(),
   };
@@ -290,13 +292,12 @@ document.getElementById('form-booking')?.addEventListener('submit', async (e) =>
 // ────────────────────────────────────────────────────────────
 async function loadFleet() {
   const tbody = document.getElementById('fleet-tbody');
-  tbody.innerHTML = `<tr><td colspan="8"><div class="spinner"></div></td></tr>`;
+  tbody.innerHTML = `<tr><td colspan="7"><div class="skeleton-table-row"><div class="skeleton-table-cell" style="width:18%"></div><div class="skeleton-table-cell" style="width:18%"></div><div class="skeleton-table-cell" style="width:10%"></div><div class="skeleton-table-cell" style="width:14%"></div><div class="skeleton-table-cell" style="width:14%"></div><div class="skeleton-table-cell" style="width:12%"></div><div class="skeleton-table-cell" style="width:14%"></div></div></td></tr>`;
   const { data, error } = await sb.from('vehicles').select('*').order('registration_no');
-  if (!driverOptions.length) await loadDriverOptions();
-loadDrivers();
-  if (error) { tbody.innerHTML = `<tr><td colspan="8">Error loading fleet</td></tr>`; return; }
+  
+  if (error) { tbody.innerHTML = `<tr><td colspan="7">Error loading fleet</td></tr>`; return; }
   if (!data.length) {
-    tbody.innerHTML = `<tr><td colspan="8"><div class="empty-state"><div class="empty-icon">🚌</div><p>No vehicles added yet.</p></div></td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="7"><div class="empty-state"><div class="empty-icon">🚌</div><p>No vehicles added yet.</p></div></td></tr>`;
     return;
   }
   tbody.innerHTML = data.map((v) => {
@@ -319,8 +320,7 @@ loadDrivers();
             ${kmLeft !== null ? (kmLeft > 0 ? formatMileage(kmLeft) + ' left' : '<span style="color:var(--red)">Overdue</span>') : '—'}
           </div>
         </td>
-        <td>${v.assigned_driver_id ? (driverOptions.find(d => d.driver_id === v.assigned_driver_id)?.name || v.assigned_driver_id) : '—'}</td>
-        <td>${statusBadge(v.status)}</td>
+                <td>${statusBadge(v.status)}</td>
         <td>
           <div style="display:flex;gap:6px">
             <button class="btn btn-sm btn-outline" onclick="openEditVehicle('${v.id}')">Edit</button>
@@ -332,9 +332,7 @@ loadDrivers();
 }
 
 document.getElementById('btn-add-vehicle')?.addEventListener('click', async () => {
-  await loadDriverOptions();
-loadDrivers();
-  resetVehicleForm();
+    resetVehicleForm();
   document.getElementById('modal-vehicle-title').textContent = 'Add Vehicle';
   openModal('modal-vehicle');
 });
@@ -346,13 +344,10 @@ function resetVehicleForm() {
     if (el) el.value = '';
   });
   document.getElementById('vehicle-status').value = 'active';
-  document.getElementById('vehicle-assigned-driver').value = '';
-}
+  }
 
 async function openEditVehicle(id) {
-  await loadDriverOptions();
-loadDrivers();
-  const { data } = await sb.from('vehicles').select('*').eq('id', id).single();
+    const { data } = await sb.from('vehicles').select('*').eq('id', id).single();
   if (!data) return;
   document.getElementById('vehicle-id').value         = data.id;
   document.getElementById('vehicle-reg').value        = data.registration_no;
@@ -363,8 +358,7 @@ loadDrivers();
   document.getElementById('vehicle-service-km').value = data.next_service_km || '';
   document.getElementById('vehicle-status').value     = data.status;
   document.getElementById('vehicle-notes').value      = data.notes || '';
-  document.getElementById('vehicle-assigned-driver').value = data.assigned_driver_id || '';
-  document.getElementById('modal-vehicle-title').textContent = 'Edit Vehicle';
+    document.getElementById('modal-vehicle-title').textContent = 'Edit Vehicle';
   openModal('modal-vehicle');
 }
 
@@ -380,8 +374,7 @@ document.getElementById('form-vehicle')?.addEventListener('submit', async (e) =>
     next_service_km: parseInt(document.getElementById('vehicle-service-km').value) || null,
     status:          document.getElementById('vehicle-status').value,
     notes:           document.getElementById('vehicle-notes').value.trim() || null,
-    assigned_driver_id: document.getElementById('vehicle-assigned-driver').value || null,
-  };
+      };
   const submitBtn = e.target.querySelector('[type="submit"]');
   submitBtn.disabled = true; submitBtn.textContent = 'Saving…';
 
@@ -415,7 +408,7 @@ async function deleteVehicle(id, reg) {
 // ────────────────────────────────────────────────────────────
 async function loadReports() {
   const container = document.getElementById('reports-list');
-  container.innerHTML = '<div class="spinner"></div>';
+  container.innerHTML = '<div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div>';
 
   const { data, error } = await sb.from('inspections')
     .select('*, profiles(name), vehicles(model)')
@@ -622,8 +615,56 @@ async function downloadPDF(inspectionId) {
   document.querySelector('[data-tab="calendar"]')?.click();
   document.getElementById('form-driver-invite')?.addEventListener('submit', inviteDriver);
   updateSyncBadge();
+  await loadBookingDriverOptions();
+  await loadBookingVehicleOptions();
+
+  const inspectionChannel = sb.channel('public:inspections')
+    .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'inspections' }, (payload) => {
+      toast('New inspection submitted!', 'info', 3000);
+      if (document.getElementById('tab-reports').classList.contains('active')) {
+        loadReports();
+      }
+    }).subscribe();
+
+  const hasSeenTour = localStorage.getItem('transroute-admin-tour-seen');
+  if (!hasSeenTour) { setTimeout(() => startAdminTour(), 1000); }
+  const tourBtn = document.createElement('button');
+  tourBtn.className = 'btn-icon'; tourBtn.innerHTML = '❓'; tourBtn.title = 'Show Tour'; tourBtn.onclick = startAdminTour;
+  document.querySelector('.header-actions').prepend(tourBtn);
 })();
 
 
 loadDriverOptions();
 loadDrivers();
+
+
+async function loadBookingDriverOptions() {
+  const { data } = await sb.from('profiles').select('driver_id,name').eq('role','driver').eq('is_active', true).order('name');
+  const sel = document.getElementById('booking-driver'); if (!sel) return;
+  sel.innerHTML = '<option value="">— Unassigned —</option>';
+  (data||[]).forEach((d)=>{ const o=document.createElement('option'); o.value=d.driver_id; o.textContent=`${d.name} (${d.driver_id})`; sel.appendChild(o); });
+}
+async function loadBookingVehicleOptions() {
+  const { data } = await sb.from('vehicles').select('registration_no,model').eq('status','active').order('registration_no');
+  const sel = document.getElementById('booking-vehicle'); if (!sel) return;
+  sel.innerHTML = '<option value="">— Unassigned —</option>';
+  (data||[]).forEach((v)=>{ const o=document.createElement('option'); o.value=v.registration_no; o.textContent=`${v.registration_no} (${v.model})`; sel.appendChild(o); });
+}
+
+async function loadDriversTab() {
+ const [activeRes, upcomingRes, driversRes] = await Promise.all([
+  sb.from('bookings').select('*').lte('start_date', new Date().toISOString().split('T')[0]).gte('end_date', new Date().toISOString().split('T')[0]).order('start_date'),
+  sb.from('bookings').select('*').gt('start_date', new Date().toISOString().split('T')[0]).order('start_date'),
+  sb.from('profiles').select('*').eq('role','driver').order('name')
+ ]);
+ const at=document.getElementById('drivers-active-trips'); const ut=document.getElementById('drivers-upcoming-trips'); const dt=document.getElementById('drivers-manage-tbody');
+ at.innerHTML=(activeRes.data||[]).map(b=>`<tr><td>${b.invoice_no}</td><td>${b.client_name}</td><td>${b.assigned_driver_id||'—'}</td><td>${b.assigned_vehicle_reg||'—'}</td><td>${formatDate(b.start_date)} - ${formatDate(b.end_date)}</td></tr>`).join('')||'<tr><td colspan="5">No active trips.</td></tr>';
+ ut.innerHTML=(upcomingRes.data||[]).map(b=>`<tr><td>${b.invoice_no}</td><td>${b.client_name}</td><td>${b.assigned_driver_id||'—'}</td><td>${b.assigned_vehicle_reg||'—'}</td><td>${formatDate(b.start_date)}</td></tr>`).join('')||'<tr><td colspan="5">No upcoming trips.</td></tr>';
+ dt.innerHTML=(driversRes.data||[]).map(d=>`<tr><td>${d.name}</td><td>${d.driver_id}</td><td>${d.phone||'—'}</td><td>${d.is_active?'Active':'Inactive'}</td><td><button class='btn btn-sm btn-outline' onclick="openEditDriver('${d.id}')">Edit</button> <button class='btn btn-sm btn-danger' onclick="deleteDriver('${d.id}')">Del</button></td></tr>`).join('')||'<tr><td colspan="5">No drivers found.</td></tr>';
+}
+async function openEditDriver(driverId){ const {data}=await sb.from('profiles').select('*').eq('id',driverId).single(); if(!data) return; document.getElementById('driver-id').value=data.id; document.getElementById('driver-name-input').value=data.name||''; document.getElementById('driver-code-input').value=data.driver_id||''; document.getElementById('driver-phone-input').value=data.phone||''; document.getElementById('driver-active-input').value=String(data.is_active); document.getElementById('modal-driver-title').textContent='Edit Driver'; openModal('modal-driver'); }
+async function deleteDriver(driverId){ if(!confirm('Delete this driver?')) return; const {error}=await sb.from('profiles').delete().eq('id',driverId); if(error){toast(error.message,'error');return;} toast('Driver deleted','success'); loadDriversTab(); }
+document.getElementById('btn-add-driver')?.addEventListener('click',()=>{ document.getElementById('form-driver').reset(); document.getElementById('driver-id').value=''; document.getElementById('modal-driver-title').textContent='Add Driver'; openModal('modal-driver');});
+document.getElementById('form-driver')?.addEventListener('submit', async (e)=>{ e.preventDefault(); const id=document.getElementById('driver-id').value; const payload={name:document.getElementById('driver-name-input').value.trim(), driver_id:document.getElementById('driver-code-input').value.trim(), phone:document.getElementById('driver-phone-input').value.trim()||null, is_active:document.getElementById('driver-active-input').value==='true', role:'driver'}; const {error}= id? await sb.from('profiles').update(payload).eq('id',id): await sb.from('profiles').insert(payload); if(error){toast(error.message,'error');return;} closeModal('modal-driver'); toast('Driver saved','success'); loadDriversTab();});
+
+function startAdminTour(){ const tour = new Shepherd.Tour({ useModalOverlay: true, defaultStepOptions: { cancelIcon: { enabled: true }, classes: 'shepherd-theme-custom', scrollTo: { behavior: 'smooth', block: 'center' } } }); tour.addStep({id:'welcome',text:'Welcome to TransRoute Admin! Let me show you around.',buttons:[{text:'Skip',action:tour.cancel},{text:'Start Tour',action:tour.next}]}); ['calendar','fleet','drivers','reports'].forEach((id,idx)=>tour.addStep({id,text:id==='calendar'?'Manage bookings and view your schedule here.':id==='fleet'?'Monitor your fleet vehicles and service schedules.':id==='drivers'?'Manage drivers and view their active and upcoming trips.':'Review inspection reports and download PDFs.',attachTo:{element:`[data-tab="${id}"]`,on:'bottom'},buttons:[{text:'Back',action:tour.back},{text:idx===3?'Finish':'Next',action:idx===3?tour.complete:tour.next}]})); tour.on('complete',()=>localStorage.setItem('transroute-admin-tour-seen','true')); tour.start(); }
