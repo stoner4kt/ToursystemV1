@@ -1,44 +1,34 @@
 // ============================================================
-//  TRANSROUTE PWA — INSPECTION FORM LOGIC
+//  TRANSROUTE PWA — INSPECTION FORM LOGIC (WITH SIGNATURE)
 // ============================================================
 
 const CHECKLIST = {
-  'Fluids & Engine': [
+  'Engine Compartment': [
     'Engine Oil Level', 'Coolant Level', 'Brake Fluid',
-    'Power Steering Fluid', 'Windshield Washer Fluid',
+    'Fan Belts / Tension', 'Battery Terminals', 'Leakages (Oil/Water)'
   ],
-  'Tyres & Wheels': [
-    'Front Left Tyre (pressure & condition)',
-    'Front Right Tyre (pressure & condition)',
-    'Rear Left Tyre (pressure & condition)',
-    'Rear Right Tyre (pressure & condition)',
-    'Spare Tyre (condition & pressure)',
+  'External Vehicle': [
+    'Tyre Tread & Pressure', 'Wheel Nuts Secured', 'Spare Wheel & Tools',
+    'Windscreen & Wipers', 'Mirrors & Glass', 'Licence Disc Valid'
   ],
-  'Lights & Electrics': [
-    'Headlights', 'Tail Lights', 'Brake Lights',
-    'Indicators & Hazards', 'Interior Lights', 'Battery / Charge',
+  'Lights & Electric': [
+    'Headlights (High/Low)', 'Indicators (Front/Rear)', 'Brake & Tail Lights',
+    'Reverse & Plate Lights', 'Reflectors & Tape'
   ],
-  'Body & Visibility': [
-    'Windscreen (cracks/chips)', 'Wipers (front & rear)',
-    'All Mirrors (condition & adjustment)',
-    'Doors & Locks', 'Windows',
+  'Internal / Cab': [
+    'Horn & Gauges', 'Seatbelts / Seats', 'Air Conditioner / Demister',
+    'Steering Play', 'Footbrake / Handbrake'
   ],
-  'Safety Equipment': [
-    'Seatbelts (all seats)', 'Fire Extinguisher (valid)',
-    'First Aid Kit', 'Warning Triangles (×2)',
-    'Reflective Safety Vest', 'Vehicle Licence Disc (valid)',
-  ],
-  'Mechanical': [
-    'Brakes (feel & response)', 'Steering (play & alignment)',
-    'Horn', 'Suspension (no unusual noise)',
-    'Clutch / Gearbox', 'Exhaust (no smoke/leaks)',
-  ],
+  'Safety Gear': [
+    'Fire Extinguisher', 'Triangle & First Aid', 'Safety Vest'
+  ]
 };
 
 // State
-let checklist   = {};    // { item: 'ok' | 'fault' | null }
-let mediaFiles  = [];    // { file: File, preview: string, type: 'before'|'after' }
+let checklist   = {}; 
+let mediaFiles  = []; 
 let uploadedUrls = [];
+let signaturePad;
 
 // ── Build Checklist UI ────────────────────────────────────────
 function buildChecklist() {
@@ -65,15 +55,12 @@ function buildChecklist() {
     container.appendChild(sec);
   });
 
-  // Delegate click events
   container.addEventListener('click', (e) => {
     const btn = e.target.closest('.chk-btn');
     if (!btn) return;
     const item  = btn.dataset.item;
     const value = btn.dataset.value;
     checklist[item] = value;
-
-    // Update button styles
     const row = btn.closest('.checklist-item');
     row.querySelectorAll('.chk-btn').forEach((b) => {
       b.classList.toggle('ok',    b.dataset.value === 'ok'    && value === 'ok');
@@ -84,41 +71,22 @@ function buildChecklist() {
 }
 
 function updateFaultSummary() {
-  const faults = Object.entries(checklist)
-    .filter(([, v]) => v === 'fault')
-    .map(([k]) => k);
+  const faults = Object.entries(checklist).filter(([, v]) => v === 'fault').map(([k]) => k);
   const el = document.getElementById('fault-summary');
-  if (faults.length > 0) {
-    el.innerHTML = `
-      <div class="fault-alert">
-        <div class="fault-icon">⚠</div>
-        <div class="fault-text"><strong>${faults.length} fault(s) marked:</strong><br>
-          <span style="font-size:.82rem">${faults.join(' · ')}</span>
-        </div>
-      </div>`;
-  } else {
-    el.innerHTML = '';
-  }
-  document.getElementById('fault-count-label').textContent =
-    faults.length > 0 ? ` (${faults.length} fault${faults.length !== 1 ? 's' : ''})` : '';
+  el.innerHTML = faults.length > 0 ? `<div class="fault-alert"><div class="fault-icon">⚠</div><div class="fault-text"><strong>${faults.length} fault(s) marked:</strong><br><span style="font-size:.82rem">${faults.join(' · ')}</span></div></div>` : '';
+  document.getElementById('fault-count-label').textContent = faults.length > 0 ? ` (${faults.length} fault${faults.length !== 1 ? 's' : ''})` : '';
 }
 
-function getCheckedCount() {
-  const vals = Object.values(checklist);
-  return vals.filter((v) => v !== null).length;
-}
-function getTotalItems() {
-  return Object.keys(checklist).length;
-}
+function getCheckedCount() { return Object.values(checklist).filter((v) => v !== null).length; }
+function getTotalItems() { return Object.keys(checklist).length; }
 
 // ── Media Capture ─────────────────────────────────────────────
 function setupMediaCapture() {
   document.querySelectorAll('.capture-input').forEach((input) => {
     input.addEventListener('change', (e) => {
       const type  = input.dataset.type;
-      const files = Array.from(e.target.files);
-      files.forEach((file) => addMediaPreview(file, type));
-      input.value = ''; // reset so same file can be re-selected
+      Array.from(e.target.files).forEach((file) => addMediaPreview(file, type));
+      input.value = ''; 
     });
   });
 }
@@ -127,230 +95,103 @@ function addMediaPreview(file, type) {
   const isVideo = file.type.startsWith('video/');
   const url = URL.createObjectURL(file);
   mediaFiles.push({ file, preview: url, type });
-
   const grid = document.getElementById(`media-preview-${type}`);
   const item = document.createElement('div');
   item.className = 'media-preview-item';
-  item.innerHTML = isVideo
-    ? `<video src="${url}" muted playsinline></video>`
-    : `<img src="${url}" alt="${type}">`;
+  item.innerHTML = isVideo ? `<video src="${url}" muted playsinline></video>` : `<img src="${url}" alt="${type}">`;
   const removeBtn = document.createElement('button');
   removeBtn.className = 'remove-media'; removeBtn.textContent = '×';
   removeBtn.onclick = () => {
     const idx = mediaFiles.findIndex((m) => m.preview === url);
     if (idx !== -1) mediaFiles.splice(idx, 1);
-    item.remove();
-    URL.revokeObjectURL(url);
+    item.remove(); URL.revokeObjectURL(url);
   };
   item.appendChild(removeBtn);
-  if (!isVideo) {
-    const annotateBtn = document.createElement('button');
-    annotateBtn.className = 'btn btn-sm btn-outline';
-    annotateBtn.style.position = 'absolute';
-    annotateBtn.style.bottom = '6px';
-    annotateBtn.style.left = '6px';
-    annotateBtn.textContent = 'Annotate';
-    annotateBtn.onclick = () => openAnnotateModal(url, type);
-    item.appendChild(annotateBtn);
-  }
   grid.appendChild(item);
 }
 
-// ── Load Vehicles ─────────────────────────────────────────────
+// ── Load Data ─────────────────────────────────────────────────
 async function loadVehicleOptions() {
-  const { data } = await sb.from('vehicles')
-    .select('registration_no, model, make, current_mileage')
-    .eq('status', 'active')
-    .order('registration_no');
+  const { data } = await sb.from('vehicles').select('registration_no, model, make, current_mileage').eq('status', 'active');
   const sel = document.getElementById('vehicle-select');
-  sel.innerHTML = '<option value="">— Select vehicle —</option>';
   (data || []).forEach((v) => {
     const opt = document.createElement('option');
-    opt.value       = v.registration_no;
-    opt.dataset.mileage = v.current_mileage;
-    opt.textContent = `${v.registration_no}  (${v.make || ''} ${v.model})`;
+    opt.value = v.registration_no; opt.dataset.mileage = v.current_mileage;
+    opt.textContent = `${v.registration_no} (${v.make || ''} ${v.model})`;
     sel.appendChild(opt);
   });
-}
-
-document.getElementById('vehicle-select')?.addEventListener('change', (e) => {
-  const selected = e.target.options[e.target.selectedIndex];
-  const mileage  = selected.dataset.mileage;
-  if (mileage) {
-    document.getElementById('mileage-input').value = mileage;
-    document.getElementById('mileage-input').placeholder = `Current: ${formatMileage(parseInt(mileage))}`;
-  }
-});
-
-// ── Load Bookings (optional link) ─────────────────────────────
-async function loadBookingOptions() {
-  const today = new Date().toISOString().split('T')[0];
-  const { data } = await sb.from('bookings')
-    .select('invoice_no, client_name, route')
-    .gte('start_date', today)
-    .in('status', ['confirmed', 'pending'])
-    .order('start_date').limit(20);
-  const sel = document.getElementById('invoice-select');
-  sel.innerHTML = '<option value="">— None / Not linked —</option>';
-  (data || []).forEach((b) => {
-    const opt = document.createElement('option');
-    opt.value       = b.invoice_no;
-    opt.textContent = `${b.invoice_no} — ${b.client_name} (${b.route || 'TBC'})`;
-    sel.appendChild(opt);
-  });
-}
-
-// ── Upload All Media to Cloudinary ────────────────────────────
-async function uploadAllMedia() {
-  uploadedUrls = [];
-  for (const item of mediaFiles) {
-    try {
-      const url = await uploadToCloudinary(item.file, 'inspections/' + item.type);
-      uploadedUrls.push({ url, type: item.type });
-    } catch (err) {
-      console.warn('Upload failed for', item.file.name, err);
-    }
-  }
-  return uploadedUrls.map((u) => u.url);
 }
 
 // ── Form Submission ───────────────────────────────────────────
 document.getElementById('form-inspection')?.addEventListener('submit', async (e) => {
   e.preventDefault();
+  
+  if (signaturePad.isEmpty()) { toast('Please provide a driver signature', 'warning'); return; }
+
   const submitBtn = document.getElementById('btn-submit');
-
   const vehicleReg = document.getElementById('vehicle-select').value;
-  const inspType   = document.getElementById('insp-type').value;
-  const mileage    = parseInt(document.getElementById('mileage-input').value) || null;
-  const invoiceNo  = document.getElementById('invoice-select').value || null;
-  const notes      = document.getElementById('notes-input').value.trim() || null;
+  const inspType = document.getElementById('insp-type').value;
+  const mileage = parseInt(document.getElementById('mileage-input').value) || null;
+  const notes = document.getElementById('notes-input').value.trim() || null;
 
-  if (!vehicleReg) { toast('Please select a vehicle', 'warning'); return; }
-  if (!inspType)   { toast('Please select inspection type', 'warning'); return; }
+  if (!vehicleReg || !inspType) { toast('Please complete required fields', 'warning'); return; }
 
   const checked = getCheckedCount();
-  const total   = getTotalItems();
-  if (checked < total) {
-    const confirmed = confirm(`${total - checked} checklist item(s) not marked. Submit anyway?`);
-    if (!confirmed) return;
-  }
+  const total = getTotalItems();
+  if (checked < total && !confirm(`${total - checked} items skipped. Submit anyway?`)) return;
 
-  const faults = Object.entries(checklist)
-    .filter(([, v]) => v === 'fault')
-    .map(([k]) => k);
-
+  const faults = Object.entries(checklist).filter(([, v]) => v === 'fault').map(([k]) => k);
   const hasCriticalFault = faults.length > 0;
 
   submitBtn.disabled = true;
-  submitBtn.innerHTML = '<span class="spinner" style="width:18px;height:18px;border-width:2px;margin:0 6px 0 0;display:inline-block;vertical-align:middle"></span> Submitting…';
+  submitBtn.innerHTML = 'Submitting...';
 
-  // Try to upload media if online
-  let mediaUrls = [];
-  if (navigator.onLine && mediaFiles.length > 0) {
-    submitBtn.textContent = 'Uploading photos…';
-    mediaUrls = await uploadAllMedia();
-  }
+  // Capture signature image
+  const signatureData = signaturePad.toDataURL(); 
 
   const payload = {
-    vehicle_reg:          vehicleReg,
-    driver_id:            currentProfile.driver_id,
-    inspection_type:      inspType,
-    checklist_json:       checklist,
-    faults_json:          faults,
-    media_urls:           mediaUrls,
+    vehicle_reg: vehicleReg,
+    driver_id: currentProfile.driver_id,
+    inspection_type: inspType,
+    checklist_json: checklist,
+    faults_json: faults,
     mileage_at_inspection: mileage,
-    invoice_no:           invoiceNo,
     notes,
-    has_critical_fault:   hasCriticalFault,
+    has_critical_fault: hasCriticalFault,
+    signature_data: signatureData, // Stores signature as Base64 for PDF export
+    submitted_at: new Date().toISOString()
   };
 
   if (!navigator.onLine) {
-    // Save offline with raw file references for later upload
-    const fileData = mediaFiles.map((m) => ({
-      blob: m.file,
-      name: m.type + '_' + m.file.name,
-    }));
-    await saveInspectionOffline({ ...payload, mediaFiles: fileData });
-
-    // Register background sync if supported
-    if ('serviceWorker' in navigator && 'SyncManager' in window) {
-      const reg = await navigator.serviceWorker.ready;
-      await reg.sync.register('sync-inspections');
-    }
-    updateSyncBadge();
-  if (!localStorage.getItem('transroute-driver-tour-seen')) setTimeout(() => startDriverTour(), 900);
-    toast('Saved offline — will sync when connected', 'warning', 5000);
+    await saveInspectionOffline(payload);
+    toast('Saved offline — will sync later', 'warning');
     submitBtn.disabled = false; submitBtn.textContent = 'Submit Inspection';
     return;
   }
 
-  submitBtn.textContent = 'Saving to server…';
   const { data, error } = await sb.from('inspections').insert(payload).select().single();
+  if (error) { toast('Error: ' + error.message, 'error'); submitBtn.disabled = false; return; }
 
-  if (error) {
-    toast('Save failed: ' + error.message, 'error');
-    submitBtn.disabled = false; submitBtn.textContent = 'Submit Inspection';
-    return;
-  }
-
-  // Update vehicle mileage
-  if (mileage) {
-    await sb.from('vehicles')
-      .update({ current_mileage: mileage })
-      .eq('registration_no', vehicleReg)
-      .lt('current_mileage', mileage);
-  }
-
-  // Trigger fault alert
-  if (hasCriticalFault && data) {
-    await triggerFaultAlert({ ...payload, id: data.id });
-  }
-
-  await postToWorkerWebhook(CONFIG.WORKER_INSPECTIONS_WEBHOOK_URL, data || payload);
-
-  toast(
-    hasCriticalFault ? '⚠ Inspection saved — fault alert sent!' : 'Inspection submitted successfully',
-    hasCriticalFault ? 'warning' : 'success',
-    4000
-  );
-
-  // Show WhatsApp reminder link for manual share
   if (hasCriticalFault) {
-    const waMsg  = encodeURIComponent(
-      `🚨 FAULT ALERT: ${vehicleReg} has ${faults.length} critical fault(s). ` +
-      `Reported by ${currentProfile.name}. Faults: ${faults.join(', ')}.`
-    );
-    const waLink = `https://wa.me/${CONFIG.ADMIN_EMAIL.replace(/\D/g, '')}?text=${waMsg}`;
-    document.getElementById('wa-alert-link').href = waLink;
+    const waMsg = encodeURIComponent(`🚨 FAULT ALERT: ${vehicleReg} has ${faults.length} faults. Reported by ${currentProfile.name}.`);
+    document.getElementById('wa-alert-link').href = `https://wa.me/${CONFIG.ADMIN_PHONE}?text=${waMsg}`;
     document.getElementById('wa-alert-section').style.display = 'block';
   }
 
   resetForm();
-  submitBtn.disabled = false; submitBtn.textContent = 'Submit Inspection';
   document.getElementById('success-section').style.display = 'block';
   document.getElementById('form-inspection').style.display = 'none';
   window.scrollTo({ top: 0, behavior: 'smooth' });
 });
 
 function resetForm() {
-  document.getElementById('vehicle-select').value = '';
-  document.getElementById('insp-type').value = '';
-  document.getElementById('mileage-input').value = '';
-  document.getElementById('invoice-select').value = '';
-  document.getElementById('notes-input').value = '';
+  document.getElementById('form-inspection').reset();
+  signaturePad.clear();
   document.getElementById('media-preview-before').innerHTML = '';
   document.getElementById('media-preview-after').innerHTML = '';
   mediaFiles = [];
-  uploadedUrls = [];
   buildChecklist();
 }
-
-document.getElementById('btn-new-inspection')?.addEventListener('click', () => {
-  resetForm();
-  document.getElementById('success-section').style.display = 'none';
-  document.getElementById('wa-alert-section').style.display = 'none';
-  document.getElementById('form-inspection').style.display = 'block';
-});
 
 // ── Init ──────────────────────────────────────────────────────
 (async () => {
@@ -358,35 +199,14 @@ document.getElementById('btn-new-inspection')?.addEventListener('click', () => {
   if (!session) return;
 
   document.getElementById('driver-name').textContent = currentProfile?.name || 'Driver';
-  document.getElementById('btn-signout')?.addEventListener('click', signOut);
+  
+  // Initialize Signature Pad
+  const canvas = document.getElementById('signature-pad');
+  signaturePad = new SignaturePad(canvas, { backgroundColor: 'rgb(255, 255, 255)' });
 
-  await Promise.all([loadVehicleOptions(), loadBookingOptions()]);
+  document.getElementById('clear-signature').addEventListener('click', () => signaturePad.clear());
+
+  await loadVehicleOptions();
   buildChecklist();
   setupMediaCapture();
-  updateSyncBadge();
-  if (!localStorage.getItem('transroute-driver-tour-seen')) setTimeout(() => startDriverTour(), 900);
-
-  // Show pending sync count
-  const count = await getPendingCount();
-  if (count > 0) toast(`${count} inspection(s) pending sync`, 'warning', 5000);
 })();
-
-let fabricCanvas; let annotationTarget = null;
-function openAnnotateModal(url, type){
-  annotationTarget = { url, type };
-  openModal('modal-annotate');
-  const img = new Image();
-  img.onload = () => {
-    const canvasEl = document.getElementById('annotation-canvas');
-    canvasEl.width = img.width; canvasEl.height = img.height;
-    fabricCanvas = new fabric.Canvas('annotation-canvas');
-    fabric.Image.fromURL(url, (fabricImg)=>{ fabricCanvas.setBackgroundImage(fabricImg, fabricCanvas.renderAll.bind(fabricCanvas));});
-  };
-  img.src = url;
-}
-document.getElementById('tool-circle')?.addEventListener('click', ()=>{ if(!fabricCanvas) return; const c=new fabric.Circle({ radius:40, left:50, top:50, fill:'transparent', stroke:'red', strokeWidth:3 }); fabricCanvas.add(c);});
-document.getElementById('tool-text')?.addEventListener('click', ()=>{ if(!fabricCanvas) return; const t=new fabric.IText('Text',{ left:60, top:60, fill:'yellow', fontSize:24}); fabricCanvas.add(t);});
-document.getElementById('tool-arrow')?.addEventListener('click', ()=>{ if(!fabricCanvas) return; const line=new fabric.Line([50,50,200,120],{ stroke:'red', strokeWidth:4}); const tri=new fabric.Triangle({ left:200, top:120, originX:'center', originY:'center', angle:120, width:12, height:16, fill:'red'}); fabricCanvas.add(line,tri);});
-document.getElementById('tool-clear')?.addEventListener('click', ()=>{ if(!fabricCanvas) return; fabricCanvas.getObjects().forEach(o=>fabricCanvas.remove(o));});
-document.getElementById('save-annotation')?.addEventListener('click', ()=>{ if(!fabricCanvas || !annotationTarget) return; fabricCanvas.toBlob((blob)=>{ const idx=mediaFiles.findIndex((m)=>m.preview===annotationTarget.url); if(idx===-1) return; const newFile=new File([blob], mediaFiles[idx].file.name, { type:'image/png' }); mediaFiles[idx].file=newFile; URL.revokeObjectURL(mediaFiles[idx].preview); mediaFiles[idx].preview=URL.createObjectURL(newFile); closeModal('modal-annotate'); toast('Annotation saved','success'); resetForm(); mediaFiles.forEach(m=>addMediaPreview(m.file,m.type)); });});
-function startDriverTour(){ const tour=new Shepherd.Tour({useModalOverlay:true,defaultStepOptions:{cancelIcon:{enabled:true}}}); tour.addStep({id:'vehicle',text:'Start by selecting vehicle and trip details.',attachTo:{element:'#vehicle-select',on:'bottom'},buttons:[{text:'Next',action:tour.next}]}); tour.addStep({id:'checklist',text:'Complete the safety checklist.',attachTo:{element:'#checklist-container',on:'top'},buttons:[{text:'Back',action:tour.back},{text:'Next',action:tour.next}]}); tour.addStep({id:'media',text:'Capture photos/videos and annotate images.',attachTo:{element:'#media-preview-before',on:'top'},buttons:[{text:'Back',action:tour.back},{text:'Next',action:tour.next}]}); tour.addStep({id:'submit',text:'Submit inspection when complete.',attachTo:{element:'#btn-submit',on:'top'},buttons:[{text:'Back',action:tour.back},{text:'Finish',action:tour.complete}]}); tour.on('complete',()=>localStorage.setItem('transroute-driver-tour-seen','true')); tour.start(); }

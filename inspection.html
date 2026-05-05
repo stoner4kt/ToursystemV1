@@ -10,10 +10,8 @@
 </head>
 <body>
 
-<!-- ── OFFLINE BANNER ─────────────────────────────────────── -->
 <div id="offline-banner">📵 Offline — inspection will be saved and synced when reconnected</div>
 
-<!-- ── HEADER ─────────────────────────────────────────────── -->
 <header class="app-header">
   <div class="logo">
     <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" stroke-width="2.2">
@@ -30,10 +28,8 @@
   </div>
 </header>
 
-<!-- ── MAIN ──────────────────────────────────────────────────── -->
 <main class="main" style="padding-bottom: 100px">
 
-  <!-- SUCCESS PANEL (hidden until submission) -->
   <div id="success-section" style="display:none">
     <div class="card" style="text-align:center;padding:36px 24px">
       <div style="font-size:3.5rem;margin-bottom:12px">✅</div>
@@ -56,20 +52,16 @@
     </div>
   </div>
 
-  <!-- INSPECTION FORM -->
   <form id="form-inspection">
 
-    <!-- Section: Vehicle & Trip Info -->
     <div class="card">
       <div class="card-title" style="margin-bottom:14px">Vehicle &amp; Trip Details</div>
-
       <div class="form-group">
         <label for="vehicle-select">Vehicle <span class="required">*</span></label>
         <select id="vehicle-select" class="form-control" required>
           <option value="">— Select vehicle —</option>
         </select>
       </div>
-
       <div class="form-group">
         <label for="insp-type">Inspection Type <span class="required">*</span></label>
         <select id="insp-type" class="form-control" required>
@@ -78,7 +70,6 @@
           <option value="post-trip">Post-Trip</option>
         </select>
       </div>
-
       <div class="form-row">
         <div class="form-group">
           <label for="mileage-input">Current Mileage (km)</label>
@@ -93,37 +84,29 @@
       </div>
     </div>
 
-    <!-- Section: Media Capture -->
     <div class="card">
       <div class="card-title" style="margin-bottom:4px">Photos &amp; Videos</div>
-      <p style="font-size:.82rem;color:var(--text-muted);margin-bottom:14px">
-        Capture before &amp; after photos. These are uploaded to secure cloud storage.
-      </p>
-
+      <p style="font-size:.82rem;color:var(--text-muted);margin-bottom:14px">Capture before &amp; after photos.</p>
       <div style="margin-bottom:14px">
-        <div style="font-size:.82rem;font-weight:700;color:var(--navy);margin-bottom:8px;text-transform:uppercase;letter-spacing:.4px">Before Trip</div>
+        <div style="font-size:.82rem;font-weight:700;color:var(--navy);margin-bottom:8px;text-transform:uppercase;">Before Trip</div>
         <label class="media-capture-btn">
           <span class="icon">📷</span>
-          <span>Tap to capture / select</span>
-          <input type="file" class="capture-input" data-type="before"
-                 accept="image/*,video/*" capture="environment" multiple>
+          <span>Tap to capture</span>
+          <input type="file" class="capture-input" data-type="before" accept="image/*,video/*" capture="environment" multiple>
         </label>
         <div class="media-preview" id="media-preview-before"></div>
       </div>
-
       <div>
-        <div style="font-size:.82rem;font-weight:700;color:var(--navy);margin-bottom:8px;text-transform:uppercase;letter-spacing:.4px">After Trip</div>
+        <div style="font-size:.82rem;font-weight:700;color:var(--navy);margin-bottom:8px;text-transform:uppercase;">After Trip</div>
         <label class="media-capture-btn">
           <span class="icon">📷</span>
-          <span>Tap to capture / select</span>
-          <input type="file" class="capture-input" data-type="after"
-                 accept="image/*,video/*" capture="environment" multiple>
+          <span>Tap to capture</span>
+          <input type="file" class="capture-input" data-type="after" accept="image/*,video/*" capture="environment" multiple>
         </label>
         <div class="media-preview" id="media-preview-after"></div>
       </div>
     </div>
 
-    <!-- Section: Checklist -->
     <div class="card">
       <div class="card-header">
         <div>
@@ -135,32 +118,39 @@
       <div id="checklist-container"></div>
     </div>
 
-    <!-- Section: Notes -->
+    <!-- NEW SIGNATURE SECTION -->
+    <div class="card">
+      <div class="card-title" style="margin-bottom:14px">Driver's Signature <span class="required">*</span></div>
+      <div style="border: 2px dashed var(--border); border-radius: 8px; background: #fff; position: relative;">
+        <canvas id="signature-pad" style="width: 100%; height: 200px; touch-action: none; border-radius: 8px;"></canvas>
+      </div>
+      <button type="button" class="btn btn-sm btn-outline" id="clear-signature" style="margin-top: 10px;">Clear Signature</button>
+    </div>
+
     <div class="card">
       <div class="form-group" style="margin-bottom:0">
         <label for="notes-input">Additional Notes</label>
-        <textarea id="notes-input" class="form-control"
-                  placeholder="Describe any additional observations, damage, or concerns…" rows="3"></textarea>
+        <textarea id="notes-input" class="form-control" placeholder="Additional observations..." rows="3"></textarea>
       </div>
     </div>
 
   </form>
-
 </main>
 
-<!-- ── SUBMIT FAB ─────────────────────────────────────────────── -->
 <div style="position:fixed;bottom:0;left:0;right:0;padding:12px 16px;background:linear-gradient(transparent,rgba(240,244,248,.98) 40%);z-index:88;">
   <button type="submit" form="form-inspection" class="btn btn-amber btn-full" id="btn-submit" style="padding:14px;font-size:1rem;box-shadow:0 4px 16px rgba(245,158,11,.4)">
     Submit Inspection
   </button>
 </div>
 
-
 <div class="modal-overlay" id="modal-annotate">
   <div class="modal" style="max-width: 800px;">
     <div class="modal-header"><span class="modal-title">Annotate Photo</span><button class="modal-close" onclick="closeModal('modal-annotate')">✕</button></div>
     <div style="margin-bottom: 12px; display: flex; gap: 8px;">
-      <button class="btn btn-sm btn-outline" id="tool-arrow">➡️ Arrow</button><button class="btn btn-sm btn-outline" id="tool-circle">⭕ Circle</button><button class="btn btn-sm btn-outline" id="tool-text">📝 Text</button><button class="btn btn-sm btn-danger" id="tool-clear">🗑️ Clear All</button>
+      <button class="btn btn-sm btn-outline" id="tool-arrow">➡️ Arrow</button>
+      <button class="btn btn-sm btn-outline" id="tool-circle">⭕ Circle</button>
+      <button class="btn btn-sm btn-outline" id="tool-text">📝 Text</button>
+      <button class="btn btn-sm btn-danger" id="tool-clear">🗑️ Clear All</button>
     </div>
     <canvas id="annotation-canvas" style="border: 1px solid var(--border); max-width: 100%;"></canvas>
     <button class="btn btn-amber btn-full" style="margin-top: 12px;" id="save-annotation">Save Annotation</button>
@@ -169,8 +159,8 @@
 
 <div id="toast-container"></div>
 
-<!-- ── SCRIPTS ──────────────────────────────────────────────── -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/signature_pad@4.1.7/dist/signature_pad.umd.min.js"></script>
 <script src="config.js"></script>
 <script src="app.js"></script>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/shepherd.js@11.2.0/dist/css/shepherd.css"/>
