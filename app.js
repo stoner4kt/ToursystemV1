@@ -18,11 +18,17 @@ async function initAuth(requiredRole = null) {
   }
   currentUser = session.user;
 
-  const { data: profile } = await sb.from('profiles')
+  const { data: profile, error } = await sb.from('profiles')
     .select('*').eq('id', currentUser.id).single();
+  
+  // DEBUG: Add this to see exactly what is happening in your mobile console
+  console.log("Session User ID:", currentUser.id);
+  console.log("Profile Data:", profile);
+
   currentProfile = profile;
 
-  if (requiredRole && profile?.role !== requiredRole) {
+  // FIX: Only redirect if we POSITIVELY have a profile and the role is wrong
+  if (requiredRole && profile && profile.role !== requiredRole) {
     if (requiredRole === 'admin') {
       window.location.href = 'inspection.html';
     } else {
@@ -30,6 +36,13 @@ async function initAuth(requiredRole = null) {
     }
     return null;
   }
+  
+  // If no profile is found yet, don't kick the user out immediately
+  if (!profile) {
+     console.warn("Profile not found in database yet.");
+     return { user: currentUser, profile: null };
+  }
+
   return { user: currentUser, profile };
 }
 
