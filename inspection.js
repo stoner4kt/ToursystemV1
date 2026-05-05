@@ -1,26 +1,33 @@
 // ============================================================
-//  TRANSROUTE PWA — INSPECTION FORM LOGIC (WITH SIGNATURE)
+//  TRANSROUTE PWA — FULL INTEGRATED INSPECTION LOGIC
 // ============================================================
 
 const CHECKLIST = {
+  'Documents & Compliance': [
+    'Tourism Permit', 'Passenger Liability Insurance', 'RC1 (NATIS Document)', 
+    'Cross Border Permit', 'Licence Disc Valid'
+  ],
   'Engine Compartment': [
     'Engine Oil Level', 'Coolant Level', 'Brake Fluid',
     'Fan Belts / Tension', 'Battery Terminals', 'Leakages (Oil/Water)'
   ],
-  'External Vehicle': [
+  'External & Exterior': [
     'Tyre Tread & Pressure', 'Wheel Nuts Secured', 'Spare Wheel & Tools',
-    'Windscreen & Wipers', 'Mirrors & Glass', 'Licence Disc Valid'
-  ],
-  'Lights & Electric': [
-    'Headlights (High/Low)', 'Indicators (Front/Rear)', 'Brake & Tail Lights',
-    'Reverse & Plate Lights', 'Reflectors & Tape'
+    'Windscreen & Wipers', 'Mirrors & Glass', 'Headlights (High/Low)', 
+    'Brake & Tail Lights', 'Indicators (Front/Rear)', 'Reverse & Plate Lights',
+    'Reflectors & Tape', 'MUD GUARDS', 'TOW BAR'
   ],
   'Internal / Cab': [
     'Horn & Gauges', 'Seatbelts / Seats', 'Air Conditioner / Demister',
-    'Steering Play', 'Footbrake / Handbrake'
+    'Steering Play', 'Footbrake / Handbrake', 'Interior Cleanliness', 'Dash Camera'
   ],
-  'Safety Gear': [
-    'Fire Extinguisher', 'Triangle & First Aid', 'Safety Vest'
+  'Safety Gear & Tools': [
+    'Fire Extinguisher', 'Triangle & First Aid', 'Safety Vest',
+    'Spare Wheel + Rim', 'Jack & Jack Handle', 'Wheel Spanner', 
+    'Medic Kit-Green Bag', 'Roadside Kit - Blue Case'
+  ],
+  'Communication & Tech': [
+    'Headset', 'PA System', 'Microphone', 'Key with Key Ring'
   ]
 };
 
@@ -28,7 +35,8 @@ const CHECKLIST = {
 let checklist   = {}; 
 let mediaFiles  = []; 
 let uploadedUrls = [];
-let signaturePad;
+let driverSigPad;
+let clientSigPad;
 
 // ── Build Checklist UI ────────────────────────────────────────
 function buildChecklist() {
@@ -126,15 +134,14 @@ async function loadVehicleOptions() {
 document.getElementById('form-inspection')?.addEventListener('submit', async (e) => {
   e.preventDefault();
   
-  if (signaturePad.isEmpty()) { toast('Please provide a driver signature', 'warning'); return; }
+  if (driverSigPad.isEmpty()) { toast('Please provide a driver signature', 'warning'); return; }
+  if (clientSigPad.isEmpty()) { toast('Please provide a client signature', 'warning'); return; }
 
   const submitBtn = document.getElementById('btn-submit');
   const vehicleReg = document.getElementById('vehicle-select').value;
   const inspType = document.getElementById('insp-type').value;
   const mileage = parseInt(document.getElementById('mileage-input').value) || null;
   const notes = document.getElementById('notes-input').value.trim() || null;
-
-  if (!vehicleReg || !inspType) { toast('Please complete required fields', 'warning'); return; }
 
   const checked = getCheckedCount();
   const total = getTotalItems();
@@ -146,9 +153,6 @@ document.getElementById('form-inspection')?.addEventListener('submit', async (e)
   submitBtn.disabled = true;
   submitBtn.innerHTML = 'Submitting...';
 
-  // Capture signature image
-  const signatureData = signaturePad.toDataURL(); 
-
   const payload = {
     vehicle_reg: vehicleReg,
     driver_id: currentProfile.driver_id,
@@ -158,7 +162,8 @@ document.getElementById('form-inspection')?.addEventListener('submit', async (e)
     mileage_at_inspection: mileage,
     notes,
     has_critical_fault: hasCriticalFault,
-    signature_data: signatureData, // Stores signature as Base64 for PDF export
+    driver_signature: driverSigPad.toDataURL(),
+    client_signature: clientSigPad.toDataURL(),
     submitted_at: new Date().toISOString()
   };
 
@@ -169,7 +174,7 @@ document.getElementById('form-inspection')?.addEventListener('submit', async (e)
     return;
   }
 
-  const { data, error } = await sb.from('inspections').insert(payload).select().single();
+  const { error } = await sb.from('inspections').insert(payload).select().single();
   if (error) { toast('Error: ' + error.message, 'error'); submitBtn.disabled = false; return; }
 
   if (hasCriticalFault) {
@@ -186,7 +191,8 @@ document.getElementById('form-inspection')?.addEventListener('submit', async (e)
 
 function resetForm() {
   document.getElementById('form-inspection').reset();
-  signaturePad.clear();
+  driverSigPad.clear();
+  clientSigPad.clear();
   document.getElementById('media-preview-before').innerHTML = '';
   document.getElementById('media-preview-after').innerHTML = '';
   mediaFiles = [];
@@ -200,11 +206,12 @@ function resetForm() {
 
   document.getElementById('driver-name').textContent = currentProfile?.name || 'Driver';
   
-  // Initialize Signature Pad
-  const canvas = document.getElementById('signature-pad');
-  signaturePad = new SignaturePad(canvas, { backgroundColor: 'rgb(255, 255, 255)' });
+  // Initialize Signature Pads
+  driverSigPad = new SignaturePad(document.getElementById('driver-signature-pad'), { backgroundColor: 'rgb(255, 255, 255)' });
+  clientSigPad = new SignaturePad(document.getElementById('client-signature-pad'), { backgroundColor: 'rgb(255, 255, 255)' });
 
-  document.getElementById('clear-signature').addEventListener('click', () => signaturePad.clear());
+  document.getElementById('clear-driver-sig').addEventListener('click', () => driverSigPad.clear());
+  document.getElementById('clear-client-sig').addEventListener('click', () => clientSigPad.clear());
 
   await loadVehicleOptions();
   buildChecklist();

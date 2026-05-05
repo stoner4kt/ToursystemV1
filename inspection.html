@@ -7,6 +7,7 @@
   <title>TransRoute — Inspection</title>
   <link rel="manifest" href="manifest.json">
   <link rel="stylesheet" href="style.css">
+  <script src="https://unpkg.com/pdf-lib/dist/pdf-lib.min.js"></script>
 </head>
 <body>
 
@@ -48,7 +49,7 @@
           </div>
         </div>
       </div>
-      <button class="btn btn-amber btn-full" id="btn-new-inspection">Start New Inspection</button>
+      <button class="btn btn-amber btn-full" id="btn-new-inspection" onclick="location.reload()">Start New Inspection</button>
     </div>
   </div>
 
@@ -118,13 +119,20 @@
       <div id="checklist-container"></div>
     </div>
 
-    <!-- NEW SIGNATURE SECTION -->
     <div class="card">
       <div class="card-title" style="margin-bottom:14px">Driver's Signature <span class="required">*</span></div>
-      <div style="border: 2px dashed var(--border); border-radius: 8px; background: #fff; position: relative;">
-        <canvas id="signature-pad" style="width: 100%; height: 200px; touch-action: none; border-radius: 8px;"></canvas>
+      <div style="border: 2px dashed var(--border); border-radius: 8px; background: #fff;">
+        <canvas id="driver-signature-pad" style="width: 100%; height: 150px; touch-action: none;"></canvas>
       </div>
-      <button type="button" class="btn btn-sm btn-outline" id="clear-signature" style="margin-top: 10px;">Clear Signature</button>
+      <button type="button" class="btn btn-sm btn-outline" id="clear-driver-sig" style="margin-top: 10px;">Clear Signature</button>
+    </div>
+
+    <div class="card">
+      <div class="card-title" style="margin-bottom:14px">Client Signature <span class="required">*</span></div>
+      <div style="border: 2px dashed var(--border); border-radius: 8px; background: #fff;">
+        <canvas id="client-signature-pad" style="width: 100%; height: 150px; touch-action: none;"></canvas>
+      </div>
+      <button type="button" class="btn btn-sm btn-outline" id="clear-client-sig" style="margin-top: 10px;">Clear Signature</button>
     </div>
 
     <div class="card">
@@ -143,29 +151,13 @@
   </button>
 </div>
 
-<div class="modal-overlay" id="modal-annotate">
-  <div class="modal" style="max-width: 800px;">
-    <div class="modal-header"><span class="modal-title">Annotate Photo</span><button class="modal-close" onclick="closeModal('modal-annotate')">✕</button></div>
-    <div style="margin-bottom: 12px; display: flex; gap: 8px;">
-      <button class="btn btn-sm btn-outline" id="tool-arrow">➡️ Arrow</button>
-      <button class="btn btn-sm btn-outline" id="tool-circle">⭕ Circle</button>
-      <button class="btn btn-sm btn-outline" id="tool-text">📝 Text</button>
-      <button class="btn btn-sm btn-danger" id="tool-clear">🗑️ Clear All</button>
-    </div>
-    <canvas id="annotation-canvas" style="border: 1px solid var(--border); max-width: 100%;"></canvas>
-    <button class="btn btn-amber btn-full" style="margin-top: 12px;" id="save-annotation">Save Annotation</button>
-  </div>
-</div>
-
 <div id="toast-container"></div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/signature_pad@4.1.7/dist/signature_pad.umd.min.js"></script>
 <script src="config.js"></script>
 <script src="app.js"></script>
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/shepherd.js@11.2.0/dist/css/shepherd.css"/>
-<script src="https://cdn.jsdelivr.net/npm/shepherd.js@11.2.0/dist/js/shepherd.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/fabric.js/5.3.0/fabric.min.js"></script>
+<script src="pdf-generator.js"></script>
 <script src="inspection.js"></script>
 </body>
 </html>
