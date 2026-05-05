@@ -143,6 +143,16 @@ function addMediaPreview(file, type) {
     URL.revokeObjectURL(url);
   };
   item.appendChild(removeBtn);
+  if (!isVideo) {
+    const annotateBtn = document.createElement('button');
+    annotateBtn.className = 'btn btn-sm btn-outline';
+    annotateBtn.style.position = 'absolute';
+    annotateBtn.style.bottom = '6px';
+    annotateBtn.style.left = '6px';
+    annotateBtn.textContent = 'Annotate';
+    annotateBtn.onclick = () => openAnnotateModal(url, type);
+    item.appendChild(annotateBtn);
+  }
   grid.appendChild(item);
 }
 
@@ -177,9 +187,9 @@ async function loadBookingOptions() {
   const today = new Date().toISOString().split('T')[0];
   const { data } = await sb.from('bookings')
     .select('invoice_no, client_name, route')
-    .gte('tour_date', today)
+    .gte('start_date', today)
     .in('status', ['confirmed', 'pending'])
-    .order('tour_date').limit(20);
+    .order('start_date').limit(20);
   const sel = document.getElementById('invoice-select');
   sel.innerHTML = '<option value="">— None / Not linked —</option>';
   (data || []).forEach((b) => {
@@ -268,6 +278,7 @@ document.getElementById('form-inspection')?.addEventListener('submit', async (e)
       await reg.sync.register('sync-inspections');
     }
     updateSyncBadge();
+  if (!localStorage.getItem('transroute-driver-tour-seen')) setTimeout(() => startDriverTour(), 900);
     toast('Saved offline — will sync when connected', 'warning', 5000);
     submitBtn.disabled = false; submitBtn.textContent = 'Submit Inspection';
     return;
@@ -353,8 +364,29 @@ document.getElementById('btn-new-inspection')?.addEventListener('click', () => {
   buildChecklist();
   setupMediaCapture();
   updateSyncBadge();
+  if (!localStorage.getItem('transroute-driver-tour-seen')) setTimeout(() => startDriverTour(), 900);
 
   // Show pending sync count
   const count = await getPendingCount();
   if (count > 0) toast(`${count} inspection(s) pending sync`, 'warning', 5000);
 })();
+
+let fabricCanvas; let annotationTarget = null;
+function openAnnotateModal(url, type){
+  annotationTarget = { url, type };
+  openModal('modal-annotate');
+  const img = new Image();
+  img.onload = () => {
+    const canvasEl = document.getElementById('annotation-canvas');
+    canvasEl.width = img.width; canvasEl.height = img.height;
+    fabricCanvas = new fabric.Canvas('annotation-canvas');
+    fabric.Image.fromURL(url, (fabricImg)=>{ fabricCanvas.setBackgroundImage(fabricImg, fabricCanvas.renderAll.bind(fabricCanvas));});
+  };
+  img.src = url;
+}
+document.getElementById('tool-circle')?.addEventListener('click', ()=>{ if(!fabricCanvas) return; const c=new fabric.Circle({ radius:40, left:50, top:50, fill:'transparent', stroke:'red', strokeWidth:3 }); fabricCanvas.add(c);});
+document.getElementById('tool-text')?.addEventListener('click', ()=>{ if(!fabricCanvas) return; const t=new fabric.IText('Text',{ left:60, top:60, fill:'yellow', fontSize:24}); fabricCanvas.add(t);});
+document.getElementById('tool-arrow')?.addEventListener('click', ()=>{ if(!fabricCanvas) return; const line=new fabric.Line([50,50,200,120],{ stroke:'red', strokeWidth:4}); const tri=new fabric.Triangle({ left:200, top:120, originX:'center', originY:'center', angle:120, width:12, height:16, fill:'red'}); fabricCanvas.add(line,tri);});
+document.getElementById('tool-clear')?.addEventListener('click', ()=>{ if(!fabricCanvas) return; fabricCanvas.getObjects().forEach(o=>fabricCanvas.remove(o));});
+document.getElementById('save-annotation')?.addEventListener('click', ()=>{ if(!fabricCanvas || !annotationTarget) return; fabricCanvas.toBlob((blob)=>{ const idx=mediaFiles.findIndex((m)=>m.preview===annotationTarget.url); if(idx===-1) return; const newFile=new File([blob], mediaFiles[idx].file.name, { type:'image/png' }); mediaFiles[idx].file=newFile; URL.revokeObjectURL(mediaFiles[idx].preview); mediaFiles[idx].preview=URL.createObjectURL(newFile); closeModal('modal-annotate'); toast('Annotation saved','success'); resetForm(); mediaFiles.forEach(m=>addMediaPreview(m.file,m.type)); });});
+function startDriverTour(){ const tour=new Shepherd.Tour({useModalOverlay:true,defaultStepOptions:{cancelIcon:{enabled:true}}}); tour.addStep({id:'vehicle',text:'Start by selecting vehicle and trip details.',attachTo:{element:'#vehicle-select',on:'bottom'},buttons:[{text:'Next',action:tour.next}]}); tour.addStep({id:'checklist',text:'Complete the safety checklist.',attachTo:{element:'#checklist-container',on:'top'},buttons:[{text:'Back',action:tour.back},{text:'Next',action:tour.next}]}); tour.addStep({id:'media',text:'Capture photos/videos and annotate images.',attachTo:{element:'#media-preview-before',on:'top'},buttons:[{text:'Back',action:tour.back},{text:'Next',action:tour.next}]}); tour.addStep({id:'submit',text:'Submit inspection when complete.',attachTo:{element:'#btn-submit',on:'top'},buttons:[{text:'Back',action:tour.back},{text:'Finish',action:tour.complete}]}); tour.on('complete',()=>localStorage.setItem('transroute-driver-tour-seen','true')); tour.start(); }

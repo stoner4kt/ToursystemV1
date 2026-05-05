@@ -155,12 +155,27 @@
   </button>
 </div>
 
+
+<div class="modal-overlay" id="modal-annotate">
+  <div class="modal" style="max-width: 800px;">
+    <div class="modal-header"><span class="modal-title">Annotate Photo</span><button class="modal-close" onclick="closeModal('modal-annotate')">✕</button></div>
+    <div style="margin-bottom: 12px; display: flex; gap: 8px;">
+      <button class="btn btn-sm btn-outline" id="tool-arrow">➡️ Arrow</button><button class="btn btn-sm btn-outline" id="tool-circle">⭕ Circle</button><button class="btn btn-sm btn-outline" id="tool-text">📝 Text</button><button class="btn btn-sm btn-danger" id="tool-clear">🗑️ Clear All</button>
+    </div>
+    <canvas id="annotation-canvas" style="border: 1px solid var(--border); max-width: 100%;"></canvas>
+    <button class="btn btn-amber btn-full" style="margin-top: 12px;" id="save-annotation">Save Annotation</button>
+  </div>
+</div>
+
 <div id="toast-container"></div>
 
 <!-- ── SCRIPTS ──────────────────────────────────────────────── -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <script src="config.js"></script>
 <script src="app.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/shepherd.js@11.2.0/dist/css/shepherd.css"/>
+<script src="https://cdn.jsdelivr.net/npm/shepherd.js@11.2.0/dist/js/shepherd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/fabric.js/5.3.0/fabric.min.js"></script>
 <script src="inspection.js"></script>
 </body>
 </html>

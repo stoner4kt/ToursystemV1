@@ -28,7 +28,6 @@ CREATE TABLE IF NOT EXISTS public.vehicles (
   status           TEXT    NOT NULL DEFAULT 'active'
                            CHECK (status IN ('active', 'maintenance', 'decommissioned')),
   notes            TEXT,
-  assigned_driver_id TEXT REFERENCES public.profiles(driver_id) ON DELETE SET NULL,
   created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -39,9 +38,10 @@ CREATE TABLE IF NOT EXISTS public.bookings (
   invoice_no    TEXT  UNIQUE NOT NULL,
   client_name   TEXT  NOT NULL,
   route         TEXT,
-  tour_date     DATE  NOT NULL,
-  passengers    INTEGER DEFAULT 1,
-  amount        NUMERIC(10,2),
+  start_date    DATE  NOT NULL,
+  end_date      DATE  NOT NULL,
+  assigned_driver_id TEXT REFERENCES public.profiles(driver_id),
+  assigned_vehicle_reg TEXT REFERENCES public.vehicles(registration_no),
   status        TEXT  NOT NULL DEFAULT 'pending'
                       CHECK (status IN ('pending','confirmed','invoiced','completed','cancelled')),
   notes         TEXT,
@@ -71,7 +71,8 @@ CREATE INDEX IF NOT EXISTS idx_inspections_vehicle  ON public.inspections(vehicl
 CREATE INDEX IF NOT EXISTS idx_inspections_driver   ON public.inspections(driver_id);
 CREATE INDEX IF NOT EXISTS idx_inspections_date     ON public.inspections(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_inspections_fault    ON public.inspections(has_critical_fault);
-CREATE INDEX IF NOT EXISTS idx_bookings_date        ON public.bookings(tour_date);
+CREATE INDEX IF NOT EXISTS idx_bookings_driver      ON public.bookings(assigned_driver_id);
+CREATE INDEX IF NOT EXISTS idx_bookings_dates       ON public.bookings(start_date, end_date);
 
 -- ── UPDATED_AT TRIGGER ────────────────────────────────────────
 CREATE OR REPLACE FUNCTION public.set_updated_at()

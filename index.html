@@ -34,6 +34,7 @@
 <nav class="tab-nav">
   <button class="tab-btn active" data-tab="calendar">📅 Calendar</button>
   <button class="tab-btn" data-tab="fleet">🚌 Fleet</button>
+  <button class="tab-btn" data-tab="drivers">👥 Drivers</button>
   <button class="tab-btn" data-tab="reports">📋 Reports</button>
 </nav>
 
@@ -100,25 +101,6 @@
 
     <div class="card">
       <div class="card-header">
-        <div>
-          <div class="card-title">Drivers</div>
-          <div class="card-subtitle">Invited, active, and ride summary</div>
-        </div>
-      </div>
-      <div class="table-wrapper">
-        <table>
-          <thead>
-            <tr><th>Name</th><th>Driver ID</th><th>Status</th><th>Completed</th><th>Upcoming</th></tr>
-          </thead>
-          <tbody id="drivers-tbody">
-            <tr><td colspan="5"><div class="spinner"></div></td></tr>
-          </tbody>
-        </table>
-      </div>
-    </div>
-
-    <div class="card">
-      <div class="card-header">
         <div class="card-title">Fleet Vehicles</div>
         <button class="btn btn-amber btn-sm" id="btn-add-vehicle">+ Add Vehicle</button>
       </div>
@@ -127,14 +109,31 @@
           <thead>
             <tr>
               <th>Reg No</th><th>Model</th><th>Year</th>
-              <th>Mileage</th><th>Next Service</th><th>Driver</th><th>Status</th><th>Actions</th>
+              <th>Mileage</th><th>Next Service</th><th>Status</th><th>Actions</th>
             </tr>
           </thead>
           <tbody id="fleet-tbody">
-            <tr><td colspan="8"><div class="spinner"></div></td></tr>
+            <tr><td colspan="7"><div class="skeleton-table-row"><div class="skeleton-table-cell" style="width:20%"></div><div class="skeleton-table-cell" style="width:20%"></div><div class="skeleton-table-cell" style="width:10%"></div><div class="skeleton-table-cell" style="width:15%"></div><div class="skeleton-table-cell" style="width:15%"></div><div class="skeleton-table-cell" style="width:10%"></div><div class="skeleton-table-cell" style="width:10%"></div></div></td></tr>
           </tbody>
         </table>
       </div>
+    </div>
+  </div>
+
+
+  <!-- ═══ DRIVERS TAB ═══ -->
+  <div class="tab-panel" id="tab-drivers">
+    <div class="card">
+      <div class="card-header"><div class="card-title">Active Trips</div></div>
+      <div class="table-wrapper"><table><thead><tr><th>Invoice</th><th>Client</th><th>Driver</th><th>Vehicle</th><th>Dates</th></tr></thead><tbody id="drivers-active-trips"><tr><td colspan="5"><div class="skeleton"></div><div class="skeleton"></div></td></tr></tbody></table></div>
+    </div>
+    <div class="card">
+      <div class="card-header"><div class="card-title">Upcoming Trips</div></div>
+      <div class="table-wrapper"><table><thead><tr><th>Invoice</th><th>Client</th><th>Driver</th><th>Vehicle</th><th>Start Date</th></tr></thead><tbody id="drivers-upcoming-trips"><tr><td colspan="5"><div class="skeleton"></div><div class="skeleton"></div></td></tr></tbody></table></div>
+    </div>
+    <div class="card">
+      <div class="card-header"><div class="card-title">Manage Drivers</div><button class="btn btn-amber btn-sm" id="btn-add-driver">+ Add Driver</button></div>
+      <div class="table-wrapper"><table><thead><tr><th>Name</th><th>Driver ID</th><th>Phone</th><th>Status</th><th>Actions</th></tr></thead><tbody id="drivers-manage-tbody"><tr><td colspan="5"><div class="skeleton"></div><div class="skeleton"></div></td></tr></tbody></table></div>
     </div>
   </div>
 
@@ -152,6 +151,10 @@
   </div>
 
 </main>
+
+<div class="modal-overlay" id="modal-driver">
+  <div class="modal"><div class="modal-header"><span class="modal-title" id="modal-driver-title">Add Driver</span><button class="modal-close" onclick="closeModal('modal-driver')">✕</button></div><form id="form-driver"><input type="hidden" id="driver-id"><div class="form-group"><label>Name <span class="required">*</span></label><input type="text" id="driver-name-input" class="form-control" required></div><div class="form-group"><label>Driver ID <span class="required">*</span></label><input type="text" id="driver-code-input" class="form-control" required></div><div class="form-group"><label>Phone</label><input type="text" id="driver-phone-input" class="form-control"></div><div class="form-group"><label>Status</label><select id="driver-active-input" class="form-control"><option value="true">Active</option><option value="false">Inactive</option></select></div><button type="submit" class="btn btn-amber btn-full">Save Driver</button></form></div>
+</div>
 
 <!-- ═══════════════════════════════════════════════════════════
      MODALS
@@ -182,19 +185,23 @@
           <input type="text" id="booking-route" class="form-control" placeholder="e.g. Cape Town → George">
         </div>
         <div class="form-group">
-          <label>Tour Date <span class="required">*</span></label>
-          <input type="date" id="booking-date" class="form-control" required>
+          <label>Start Date <span class="required">*</span></label>
+          <input type="date" id="booking-start-date" class="form-control" required>
         </div>
       </div>
       <div class="form-row">
         <div class="form-group">
-          <label>Passengers</label>
-          <input type="number" id="booking-pax" class="form-control" min="1" value="1">
+          <label>End Date <span class="required">*</span></label>
+          <input type="date" id="booking-end-date" class="form-control" required>
         </div>
         <div class="form-group">
-          <label>Amount (R)</label>
-          <input type="number" id="booking-amount" class="form-control" step="0.01" placeholder="0.00">
+          <label>Assign Driver</label>
+          <select id="booking-driver" class="form-control"><option value="">— Unassigned —</option></select>
         </div>
+      </div>
+      <div class="form-group">
+        <label>Assign Vehicle</label>
+        <select id="booking-vehicle" class="form-control"><option value="">— Unassigned —</option></select>
       </div>
       <div class="form-group">
         <label>Status</label>
@@ -263,12 +270,6 @@
         <input type="number" id="vehicle-service-km" class="form-control" min="0" placeholder="90000">
       </div>
       <div class="form-group">
-        <label>Assigned Driver</label>
-        <select id="vehicle-assigned-driver" class="form-control">
-          <option value="">— Unassigned —</option>
-        </select>
-      </div>
-      <div class="form-group">
         <label>Notes</label>
         <textarea id="vehicle-notes" class="form-control" rows="2"></textarea>
       </div>
@@ -297,6 +298,8 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 <script src="config.js"></script>
 <script src="app.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/shepherd.js@11.2.0/dist/css/shepherd.css"/>
+<script src="https://cdn.jsdelivr.net/npm/shepherd.js@11.2.0/dist/js/shepherd.min.js"></script>
 <script src="admin.js"></script>
 </body>
 </html>

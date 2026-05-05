@@ -482,3 +482,9 @@ Open `config.js` and set:
 3. Confirm rows appear in both spreadsheets.
 4. If missing, check Cloudflare Worker logs and browser console.
 
+
+## 2026 Feature Updates
+- Booking records now use `start_date`, `end_date`, `assigned_driver_id`, and `assigned_vehicle_reg`.
+- Added Drivers dashboard in admin for active/upcoming trips and CRUD driver management.
+- Added in-app photo annotation tools for inspections (arrow/circle/text).
+- Added onboarding product tours for admin and inspection apps.

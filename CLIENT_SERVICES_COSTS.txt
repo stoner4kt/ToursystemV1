@@ -68,3 +68,8 @@ Suggested budget ranges
 - Lean setup (pilot): $0 to $50/month
 - Typical production (SME): $50 to $250/month
 - Heavier scale: $250+/month
+
+- Booking schema updated: uses start_date/end_date plus assigned_driver_id and assigned_vehicle_reg.
+- New Drivers dashboard tab for active/upcoming trips and driver management.
+- Inspection photo annotation added via Fabric.js.
+- Onboarding tours added for admin and driver interfaces using Shepherd.js.
