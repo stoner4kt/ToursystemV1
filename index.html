@@ -100,6 +100,25 @@
 
     <div class="card">
       <div class="card-header">
+        <div>
+          <div class="card-title">Drivers</div>
+          <div class="card-subtitle">Invited, active, and ride summary</div>
+        </div>
+      </div>
+      <div class="table-wrapper">
+        <table>
+          <thead>
+            <tr><th>Name</th><th>Driver ID</th><th>Status</th><th>Completed</th><th>Upcoming</th></tr>
+          </thead>
+          <tbody id="drivers-tbody">
+            <tr><td colspan="5"><div class="spinner"></div></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
         <div class="card-title">Fleet Vehicles</div>
         <button class="btn btn-amber btn-sm" id="btn-add-vehicle">+ Add Vehicle</button>
       </div>

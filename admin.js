@@ -11,10 +11,40 @@ document.querySelectorAll('.tab-btn').forEach((btn) => {
     btn.classList.add('active');
     document.getElementById(`tab-${target}`)?.classList.add('active');
     if (target === 'calendar') renderCalendar();
-    if (target === 'fleet')    loadFleet();
+    if (target === 'fleet') { loadFleet(); loadDrivers(); }
     if (target === 'reports')  loadReports();
   });
 });
+
+
+async function loadDrivers() {
+  const tbody = document.getElementById('drivers-tbody');
+  if (!tbody) return;
+  tbody.innerHTML = '<tr><td colspan="5"><div class="spinner"></div></td></tr>';
+
+  const { data: drivers, error } = await sb.from('profiles')
+    .select('id,driver_id,name,is_active,created_at,role')
+    .eq('role', 'driver')
+    .order('created_at', { ascending: false });
+
+  if (error) {
+    tbody.innerHTML = `<tr><td colspan="5">Error: ${error.message}</td></tr>`;
+    return;
+  }
+
+  const { data: vehicles } = await sb.from('vehicles').select('registration_no,assigned_driver_id');
+  const { data: bookings } = await sb.from('bookings').select('tour_date,invoice_no,status');
+  const { data: inspections } = await sb.from('inspections').select('driver_id,invoice_no,created_at');
+
+  const today = new Date().toISOString().split('T')[0];
+  tbody.innerHTML = (drivers || []).map((d) => {
+    const status = d.is_active ? 'Active' : 'Inactive';
+    const completed = (inspections || []).filter(i => i.driver_id === d.driver_id).length;
+    const regs = (vehicles || []).filter(v => v.assigned_driver_id === d.driver_id).map(v => v.registration_no);
+    const upcoming = (bookings || []).filter(b => b.tour_date >= today && b.status !== 'cancelled').length;
+    return `<tr><td>${d.name}</td><td>${d.driver_id}</td><td>${status}</td><td>${completed}</td><td>${upcoming}</td></tr>`;
+  }).join('') || '<tr><td colspan="5">No drivers found.</td></tr>';
+}
 
 // ────────────────────────────────────────────────────────────
 //  CALENDAR
@@ -80,6 +110,7 @@ async function inviteDriver(event) {
     nameInput.value = '';
     emailInput.value = '';
     await loadDriverOptions();
+loadDrivers();
   } catch (err) {
     msg.style.color = 'var(--red)';
     msg.textContent = err?.message || 'Failed to send driver invite.';
@@ -241,7 +272,13 @@ document.getElementById('form-booking')?.addEventListener('submit', async (e) =>
     : await sb.from('bookings').insert(payload).select().single();
 
   submitBtn.disabled = false; submitBtn.textContent = 'Save Booking';
-  if (error) { toast('Error: ' + error.message, 'error'); return; }
+  if (error) {
+    const extra = error.message.includes('infinite recursion detected')
+      ? ' Database RLS policy issue detected. Run updated schema.sql policies (is_admin function) in Supabase SQL editor.'
+      : '';
+    toast('Error: ' + error.message + extra, 'error');
+    return;
+  }
   toast(id ? 'Booking updated' : 'Booking added', 'success');
   await postToWorkerWebhook(CONFIG.WORKER_BOOKINGS_WEBHOOK_URL, bookingData || payload);
   closeModal('modal-booking');
@@ -256,6 +293,7 @@ async function loadFleet() {
   tbody.innerHTML = `<tr><td colspan="8"><div class="spinner"></div></td></tr>`;
   const { data, error } = await sb.from('vehicles').select('*').order('registration_no');
   if (!driverOptions.length) await loadDriverOptions();
+loadDrivers();
   if (error) { tbody.innerHTML = `<tr><td colspan="8">Error loading fleet</td></tr>`; return; }
   if (!data.length) {
     tbody.innerHTML = `<tr><td colspan="8"><div class="empty-state"><div class="empty-icon">🚌</div><p>No vehicles added yet.</p></div></td></tr>`;
@@ -295,6 +333,7 @@ async function loadFleet() {
 
 document.getElementById('btn-add-vehicle')?.addEventListener('click', async () => {
   await loadDriverOptions();
+loadDrivers();
   resetVehicleForm();
   document.getElementById('modal-vehicle-title').textContent = 'Add Vehicle';
   openModal('modal-vehicle');
@@ -312,6 +351,7 @@ function resetVehicleForm() {
 
 async function openEditVehicle(id) {
   await loadDriverOptions();
+loadDrivers();
   const { data } = await sb.from('vehicles').select('*').eq('id', id).single();
   if (!data) return;
   document.getElementById('vehicle-id').value         = data.id;
@@ -350,7 +390,13 @@ document.getElementById('form-vehicle')?.addEventListener('submit', async (e) =>
     : await sb.from('vehicles').insert(payload);
 
   submitBtn.disabled = false; submitBtn.textContent = 'Save Vehicle';
-  if (error) { toast('Error: ' + error.message, 'error'); return; }
+  if (error) {
+    const extra = error.message.includes('infinite recursion detected')
+      ? ' Database RLS policy issue detected. Run updated schema.sql policies (is_admin function) in Supabase SQL editor.'
+      : '';
+    toast('Error: ' + error.message + extra, 'error');
+    return;
+  }
   toast(id ? 'Vehicle updated' : 'Vehicle added', 'success');
   closeModal('modal-vehicle');
   loadFleet();
@@ -580,3 +626,4 @@ async function downloadPDF(inspectionId) {
 
 
 loadDriverOptions();
+loadDrivers();
