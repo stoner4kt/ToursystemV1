@@ -46,17 +46,23 @@ async function onLoginSubmit(event) {
       .from('profiles')
       .select('role')
       .eq('id', userId)
-      .single();
+      .maybeSingle();
 
-    if (profileError) {
+    const metadataRole = data?.user?.app_metadata?.role || data?.user?.user_metadata?.role;
+    const isConfiguredAdminEmail = Boolean(CONFIG.ADMIN_EMAIL)
+      && email.toLowerCase() === String(CONFIG.ADMIN_EMAIL).toLowerCase();
+
+    const isAdmin = profile?.role === 'admin' || metadataRole === 'admin' || isConfiguredAdminEmail;
+
+    if (profileError && !isAdmin) {
       await sb.auth.signOut();
-      showMessage('Unable to verify admin role. Please contact support.', 'error');
+      showMessage(`Unable to verify admin role (${profileError.message}).`, 'error');
       return;
     }
 
-    if (profile?.role !== 'admin') {
+    if (!isAdmin) {
       await sb.auth.signOut();
-      showMessage('Access denied: this page is for admin users only.', 'error');
+      showMessage('Access denied: this account is not marked as admin.', 'error');
       return;
     }
 
