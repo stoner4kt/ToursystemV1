@@ -110,6 +110,16 @@ CREATE TABLE IF NOT EXISTS public.recon_sheets (
   updated_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+
+-- 6. DRIVER INVITES (admin-only controlled onboarding)
+CREATE TABLE IF NOT EXISTS public.driver_invites (
+  email      TEXT PRIMARY KEY,
+  full_name  TEXT NOT NULL,
+  invited_by UUID REFERENCES public.profiles(id),
+  invited_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  used_at    TIMESTAMPTZ
+);
+
 -- ── INDEXES ──────────────────────────────────────────────────
 CREATE INDEX IF NOT EXISTS idx_inspections_vehicle  ON public.inspections(vehicle_reg);
 CREATE INDEX IF NOT EXISTS idx_inspections_driver   ON public.inspections(driver_id);
@@ -169,6 +179,7 @@ ALTER TABLE public.vehicles    ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.bookings    ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.inspections ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.recon_sheets ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.driver_invites ENABLE ROW LEVEL SECURITY;
 
 -- Admin helper (avoids recursive RLS policy checks)
 CREATE OR REPLACE FUNCTION public.is_admin()
@@ -219,6 +230,13 @@ CREATE POLICY "recon_own_update" ON public.recon_sheets FOR UPDATE
   USING (driver_id = (SELECT driver_id FROM public.profiles WHERE id = auth.uid()))
   WITH CHECK (driver_id = (SELECT driver_id FROM public.profiles WHERE id = auth.uid()));
 CREATE POLICY "recon_admin" ON public.recon_sheets FOR ALL
+  USING (public.is_admin())
+  WITH CHECK (public.is_admin());
+
+
+
+-- driver_invites: only admins can read/write
+CREATE POLICY "driver_invites_admin" ON public.driver_invites FOR ALL
   USING (public.is_admin())
   WITH CHECK (public.is_admin());
 

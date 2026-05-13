@@ -96,19 +96,31 @@ async function inviteDriver(event) {
   msg.textContent = 'Sending invitation link...';
 
   try {
+    const { data: authData } = await sb.auth.getUser();
+    const adminUserId = authData?.user?.id || null;
+
+    const { error: inviteError } = await sb.from('driver_invites').upsert({
+      email,
+      full_name: fullName,
+      invited_by: adminUserId,
+      invited_at: new Date().toISOString(),
+      used_at: null,
+    }, { onConflict: 'email' });
+    if (inviteError) throw inviteError;
+
     const { error } = await sb.auth.signInWithOtp({
       email,
       options: {
         shouldCreateUser: true,
         data: { full_name: fullName, role: 'driver' },
-        emailRedirectTo: `${window.location.origin}/inspection.html`,
+        emailRedirectTo: `${window.location.origin}/driver-signup.html?email=${encodeURIComponent(email)}`,
       },
     });
 
     if (error) throw error;
 
     msg.style.color = 'var(--green)';
-    msg.textContent = 'Invite sent. The driver can open the magic link from their email to log in.';
+    msg.textContent = 'Invite sent. Driver must use the emailed link to create their password.';
     nameInput.value = '';
     emailInput.value = '';
       } catch (err) {

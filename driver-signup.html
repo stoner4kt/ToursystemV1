@@ -1,0 +1,37 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Driver Signup</title><link rel="stylesheet" href="style.css"></head>
+<body><main class="main" style="max-width:500px;margin:40px auto"><div class="card"><div class="card-title">Driver Account Setup</div><p id="status">Validating invite link…</p><form id="signup-form" style="display:none">
+<div class="form-group"><label>Email</label><input id="email" class="form-control" readonly></div>
+<div class="form-group"><label>New Password</label><input id="password" type="password" minlength="8" class="form-control" required></div>
+<div class="form-group"><label>Confirm Password</label><input id="confirm" type="password" minlength="8" class="form-control" required></div>
+<button id="btn-save" class="btn btn-amber btn-full" type="submit">Create Account</button></form>
+<p id="msg" aria-live="polite" style="margin-top:10px"></p></div></main>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script><script src="config.js"></script>
+<script>
+const { createClient } = supabase; const sb = createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON_KEY);
+const qs = new URLSearchParams(location.search); const invitedEmail = (qs.get('email')||'').toLowerCase();
+const statusEl=document.getElementById('status'); const form=document.getElementById('signup-form'); const msg=document.getElementById('msg');
+(async ()=>{
+  const { data:{session} } = await sb.auth.getSession();
+  if (!session?.user) { statusEl.textContent='This signup page is protected. Use the invite link from your email.'; return; }
+  const sessionEmail=(session.user.email||'').toLowerCase();
+  if (!invitedEmail || sessionEmail!==invitedEmail) { statusEl.textContent='Invalid invite link for this account.'; return; }
+  const { data:invite, error } = await sb.from('driver_invites').select('email,used_at').eq('email', sessionEmail).maybeSingle();
+  if (error || !invite) { statusEl.textContent='This email was not invited by an admin.'; await sb.auth.signOut(); return; }
+  if (invite.used_at) { statusEl.textContent='This invite link has already been used. Please log in.'; return; }
+  document.getElementById('email').value=sessionEmail;
+  statusEl.textContent='Invite verified. Create your password to finish signup.';
+  form.style.display='block';
+})();
+form.addEventListener('submit', async (e)=>{e.preventDefault();
+  const p=password.value, c=confirm.value; if (p.length<8) return show('Password must be at least 8 characters.','error'); if (p!==c) return show('Passwords do not match.','error');
+  btnSave(true);
+  const { data:{user} } = await sb.auth.getUser();
+  const { error:pwErr } = await sb.auth.updateUser({ password: p });
+  if (pwErr) { btnSave(false); return show(pwErr.message,'error'); }
+  await sb.from('profiles').update({ role:'driver', is_active:true }).eq('id', user.id);
+  await sb.from('driver_invites').update({ used_at:new Date().toISOString() }).eq('email', user.email.toLowerCase());
+  show('Account created. Redirecting to driver dashboard…','success'); setTimeout(()=>location.href='/driver-dashboard.html',1200);
+});
+function btnSave(dis){ const b=document.getElementById('btn-save'); b.disabled=dis; b.textContent=dis?'Saving…':'Create Account'; }
+function show(t,type){ msg.textContent=t; msg.className=`toast toast-${type}`; }
+</script></body></html>
