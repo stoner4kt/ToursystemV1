@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#0f2744">
+  <title>TransRoute — Driver Dashboard</title>
+  <link rel="manifest" href="manifest.json">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div id="offline-banner">📵 You are offline — changes will sync when reconnected</div>
+<header class="app-header">
+  <div class="logo">Trans<span>Route</span>&nbsp;<span style="font-weight:400;font-size:.8rem;opacity:.6">Driver</span></div>
+  <div class="header-actions">
+    <span id="driver-name" style="color:rgba(255,255,255,.75)"></span>
+    <button class="btn-icon" id="btn-signout" title="Sign out">⏻</button>
+  </div>
+</header>
+<nav class="tab-nav">
+  <button class="tab-btn active" data-tab="recon">📊 Weekly Recon</button>
+</nav>
+<main class="main">
+  <div class="tab-panel active" id="tab-recon">
+    <div class="card">
+      <div class="card-header"><div><div class="card-title">Weekly Recon Sheet</div><div class="card-subtitle">Fill all cost lines and submit to admin review</div></div></div>
+      <form id="form-recon">
+        <div class="form-row"><div class="form-group"><label>Driver Name</label><input id="recon-driver-name" class="form-control" readonly></div><div class="form-group"><label>Tour Reference</label><input id="recon-tour-reference" class="form-control" required></div></div>
+        <div class="form-row"><div class="form-group"><label>Tour Vehicle</label><input id="recon-tour-vehicle" class="form-control"></div><div class="form-group"><label>Vehicle Reg</label><input id="recon-vehicle-reg" class="form-control"></div></div>
+        <div class="form-row"><div class="form-group"><label>Start KM</label><input type="number" id="recon-start-km" class="form-control"></div><div class="form-group"><label>End KM</label><input type="number" id="recon-end-km" class="form-control"></div></div>
+        <div class="form-group"><label>Slip lines (Date / ODO / KM Driven / Litres / Total Cost / Notes)</label><textarea id="recon-lines" class="form-control" rows="6" placeholder="2026-05-12 | 125000 | 320 | 45 | 900.00 | Fuel"></textarea></div>
+        <div class="form-row"><div class="form-group"><label>Trip Budget</label><input id="recon-trip-budget" class="form-control"></div><div class="form-group"><label>Trip Cost</label><input id="recon-trip-cost" class="form-control"></div></div>
+        <div class="form-row"><div class="form-group"><label>Driver Food</label><input id="recon-driver-food" class="form-control"></div><div class="form-group"><label>Flights To</label><input id="recon-flights-to" class="form-control"></div></div>
+        <div class="form-row"><div class="form-group"><label>Flights From</label><input id="recon-flights-from" class="form-control"></div><div class="form-group"><label>Driver Rate</label><input id="recon-driver-rate" class="form-control"></div></div>
+        <div class="form-row"><div class="form-group"><label>Accommodation</label><input id="recon-accommodation" class="form-control"></div><div class="form-group"><label>Total Profit/Loss</label><input id="recon-profit-loss" class="form-control"></div></div>
+        <div class="form-group"><label>Director Sign Off</label><input id="recon-director-signoff" class="form-control" placeholder="Office use only"></div>
+        <button type="submit" class="btn btn-amber btn-full">Submit Recon Sheet</button>
+      </form>
+    </div>
+  </div>
+</main>
+<div id="toast-container"></div>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<script src="config.js"></script>
+<script src="app.js"></script>
+<script src="driver-dashboard.js"></script>
+</body>
+</html>

@@ -23,8 +23,13 @@ const CONFIG = {
   // https://app.supabase.com → Edge Functions → fault-alert → URL
   FAULT_ALERT_FUNCTION_URL: 'https://YOUR_PROJECT_ID.supabase.co/functions/v1/fault-alert',
 
-  // ── Optional Cloudflare Worker Webhooks (Google Sheets logging) ─
-  WORKER_BOOKINGS_WEBHOOK_URL: 'https://YOUR_WORKER.workers.dev/bookings',
-  WORKER_INSPECTIONS_WEBHOOK_URL: 'https://YOUR_WORKER.workers.dev/inspections',
-  WORKER_SHARED_TOKEN: 'YOUR_WORKER_SHARED_TOKEN',
+  // ── Cloudflare Workers Webhooks (security + logging) ─────────────
+  // Receives booking write events for downstream compliance logging.
+  WORKER_BOOKINGS_WEBHOOK_URL: 'https://transroute-security.YOUR_ACCOUNT.workers.dev/bookings',
+  // Receives inspection submission events for operational monitoring.
+  WORKER_INSPECTIONS_WEBHOOK_URL: 'https://transroute-security.YOUR_ACCOUNT.workers.dev/inspections',
+  // Receives weekly recon-sheet submission and review events.
+  WORKER_RECON_WEBHOOK_URL: 'https://transroute-security.YOUR_ACCOUNT.workers.dev/recon-sheets',
+  // Shared bearer token validated by the Cloudflare Worker.
+  WORKER_SHARED_TOKEN: 'your-generated-token-here',
 };

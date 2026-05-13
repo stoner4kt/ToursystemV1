@@ -205,6 +205,38 @@ const CONFIG = {
 };
 ```
 
+Add Worker keys for secure logging:
+```javascript
+WORKER_BOOKINGS_WEBHOOK_URL: 'https://transroute-security.YOUR_ACCOUNT.workers.dev/bookings',
+WORKER_INSPECTIONS_WEBHOOK_URL: 'https://transroute-security.YOUR_ACCOUNT.workers.dev/inspections',
+WORKER_RECON_WEBHOOK_URL: 'https://transroute-security.YOUR_ACCOUNT.workers.dev/recon-sheets',
+WORKER_SHARED_TOKEN: 'your-generated-token-here',
+```
+
+## STEP 4.1 — Enable Recon Sheets (Production)
+
+1. Re-run `schema.sql` in Supabase SQL Editor (safe with `IF NOT EXISTS` blocks).
+2. Confirm table exists:
+   ```sql
+   select table_name from information_schema.tables
+   where table_schema='public' and table_name='recon_sheets';
+   ```
+3. Confirm RLS policies:
+   ```sql
+   select policyname, cmd from pg_policies
+   where schemaname='public' and tablename='recon_sheets';
+   ```
+4. Validate driver insert works with a driver user session.
+5. Validate admin read/review works in `index.html` → **Recon Review** tab.
+
+## STEP 4.2 — Driver Recon Submission Rollout
+
+1. Publish `driver-dashboard.html` and `driver-dashboard.js` with the rest of the app.
+2. Ensure driver users are set with `profiles.role='driver'` and `is_active=true`.
+3. Have drivers access `/driver-dashboard.html` to submit weekly recon sheets.
+4. Confirm submission appears in `public.recon_sheets` with `status='submitted'`.
+5. Confirm Worker logging receives recon events at `/recon-sheets`.
+
 ---
 
 ## STEP 5 — Generate App Icons

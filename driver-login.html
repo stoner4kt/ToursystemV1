@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#0f2744">
+  <title>TransRoute — Driver Login</title>
+  <link rel="manifest" href="manifest.json">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="login-bg" style="min-height:100dvh;display:flex;align-items:center;justify-content:center;padding:20px;background:linear-gradient(145deg,#0f2744,#1a3a5c)">
+    <div class="card" style="width:100%;max-width:420px">
+      <div class="card-title" style="font-size:1.5rem">Driver Login</div>
+      <div class="card-subtitle">Email & password access for drivers</div>
+      <form id="driver-login-form" style="margin-top:14px">
+        <div class="form-group"><label>Email</label><input id="email" type="email" class="form-control" required autocomplete="email"></div>
+        <div class="form-group"><label>Password</label><input id="password" type="password" class="form-control" required autocomplete="current-password"></div>
+        <button id="btn-login" class="btn btn-amber btn-full" type="submit">Sign In</button>
+      </form>
+      <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">
+        <a href="reset-password.html" class="btn btn-sm btn-outline">Forgot Password</a>
+        <a href="admin-login.html" class="btn btn-sm btn-outline">Admin Login</a>
+        <a href="demo.html" class="btn btn-sm btn-outline">Demo</a>
+      </div>
+      <div id="msg" role="alert" aria-live="polite" style="margin-top:10px"></div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+  <script src="config.js"></script>
+  <script>
+    const { createClient } = supabase;
+    const sb = createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON_KEY);
+    const form = document.getElementById('driver-login-form');
+    const msg = document.getElementById('msg');
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const email = document.getElementById('email').value.trim().toLowerCase();
+      const password = document.getElementById('password').value;
+      const btn = document.getElementById('btn-login');
+      if (!email || !password) return show('Please enter email and password.', 'error');
+      btn.disabled = true; btn.textContent = 'Signing in…';
+      try {
+        await sb.auth.signOut();
+        const { data, error } = await sb.auth.signInWithPassword({ email, password });
+        if (error) throw error;
+        const userId = data?.user?.id;
+        const { data: profile, error: pe } = await sb.from('profiles').select('role,is_active').eq('id', userId).single();
+        if (pe) throw pe;
+        if (profile.role !== 'driver') { await sb.auth.signOut(); throw new Error('Access denied: driver account required.'); }
+        if (profile.is_active === false) { await sb.auth.signOut(); throw new Error('Your account is inactive. Contact admin.'); }
+        await sb.from('profiles').update({ last_login: new Date().toISOString() }).eq('id', userId);
+        show('Login successful. Redirecting…', 'success');
+        window.location.href = '/driver-dashboard.html';
+      } catch (err) {
+        show(err.message || 'Login failed.', 'error');
+      } finally {
+        btn.disabled = false; btn.textContent = 'Sign In';
+      }
+    });
+
+    function show(text, type) {
+      msg.textContent = text;
+      msg.className = `toast toast-${type}`;
+    }
+  </script>
+</body>
+</html>
