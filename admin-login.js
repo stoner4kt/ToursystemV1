@@ -88,7 +88,9 @@ async function onForgotPassword() {
   forgotPasswordButton.disabled = true;
 
   try {
-    const { error } = await sb.auth.resetPasswordForEmail(email);
+    const { error } = await sb.auth.resetPasswordForEmail(email, {
+      redirectTo: `${window.location.origin}/reset-password.html`,
+    });
     if (error) {
       showMessage(error.message || 'Failed to send password reset email.', 'error');
       return;

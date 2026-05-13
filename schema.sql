@@ -66,6 +66,50 @@ CREATE TABLE IF NOT EXISTS public.inspections (
   created_at           TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+-- 5. RECON SHEETS (weekly driver trip-cost/wellness sheet)
+CREATE TABLE IF NOT EXISTS public.recon_sheets (
+  id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  driver_id         TEXT NOT NULL REFERENCES public.profiles(driver_id),
+  week_start        DATE NOT NULL,
+  week_end          DATE NOT NULL,
+  tour_reference    TEXT,
+  tour_vehicle      TEXT,
+  vehicle_reg       TEXT,
+  start_km          INTEGER,
+  end_km            INTEGER,
+  total_distance_km INTEGER DEFAULT 0,
+  trips_completed   INTEGER DEFAULT 0,
+  total_hours       NUMERIC(8,2),
+  cost_lines_text   TEXT,
+  trip_budget       TEXT,
+  trip_cost         TEXT,
+  driver_food       TEXT,
+  flights_to        TEXT,
+  flights_from      TEXT,
+  driver_rate       TEXT,
+  accommodation     TEXT,
+  total_profit_loss TEXT,
+  director_sign_off TEXT,
+  vehicle_issues       TEXT,
+  accidents_incidents  TEXT,
+  traffic_violations   TEXT,
+  safety_concerns      TEXT,
+  maintenance_needed   TEXT,
+  fuel_consumption     TEXT,
+  tires_condition      TEXT,
+  fatigue_level        INTEGER CHECK (fatigue_level BETWEEN 1 AND 10),
+  stress_level         INTEGER CHECK (stress_level BETWEEN 1 AND 10),
+  health_issues        TEXT,
+  driver_notes         TEXT,
+  admin_review_notes   TEXT,
+  status            TEXT NOT NULL DEFAULT 'draft' CHECK (status IN ('draft', 'submitted', 'reviewed')),
+  submitted_at      TIMESTAMPTZ,
+  reviewed_by       UUID REFERENCES public.profiles(id),
+  reviewed_at       TIMESTAMPTZ,
+  created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
 -- ── INDEXES ──────────────────────────────────────────────────
 CREATE INDEX IF NOT EXISTS idx_inspections_vehicle  ON public.inspections(vehicle_reg);
 CREATE INDEX IF NOT EXISTS idx_inspections_driver   ON public.inspections(driver_id);
@@ -73,6 +117,9 @@ CREATE INDEX IF NOT EXISTS idx_inspections_date     ON public.inspections(create
 CREATE INDEX IF NOT EXISTS idx_inspections_fault    ON public.inspections(has_critical_fault);
 CREATE INDEX IF NOT EXISTS idx_bookings_driver      ON public.bookings(assigned_driver_id);
 CREATE INDEX IF NOT EXISTS idx_bookings_dates       ON public.bookings(start_date, end_date);
+CREATE INDEX IF NOT EXISTS idx_recon_driver         ON public.recon_sheets(driver_id);
+CREATE INDEX IF NOT EXISTS idx_recon_week           ON public.recon_sheets(week_start, week_end);
+CREATE INDEX IF NOT EXISTS idx_recon_status         ON public.recon_sheets(status);
 
 -- ── UPDATED_AT TRIGGER ────────────────────────────────────────
 CREATE OR REPLACE FUNCTION public.set_updated_at()
@@ -90,6 +137,10 @@ CREATE TRIGGER trg_bookings_updated_at
 
 CREATE TRIGGER trg_profiles_updated_at
   BEFORE UPDATE ON public.profiles
+  FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
+
+CREATE TRIGGER trg_recon_updated_at
+  BEFORE UPDATE ON public.recon_sheets
   FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
 
 -- ── AUTO-CREATE PROFILE ON SIGN-UP ───────────────────────────
@@ -117,6 +168,7 @@ ALTER TABLE public.profiles    ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.vehicles    ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.bookings    ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.inspections ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.recon_sheets ENABLE ROW LEVEL SECURITY;
 
 -- Admin helper (avoids recursive RLS policy checks)
 CREATE OR REPLACE FUNCTION public.is_admin()
@@ -155,6 +207,18 @@ CREATE POLICY "inspections_own"   ON public.inspections FOR SELECT
 CREATE POLICY "inspections_insert" ON public.inspections FOR INSERT
   WITH CHECK (auth.uid() IS NOT NULL);
 CREATE POLICY "inspections_admin"  ON public.inspections FOR ALL
+  USING (public.is_admin())
+  WITH CHECK (public.is_admin());
+
+-- recon_sheets: drivers can read/write own records; admins can read/write all
+CREATE POLICY "recon_own_select" ON public.recon_sheets FOR SELECT
+  USING (driver_id = (SELECT driver_id FROM public.profiles WHERE id = auth.uid()));
+CREATE POLICY "recon_own_insert" ON public.recon_sheets FOR INSERT
+  WITH CHECK (driver_id = (SELECT driver_id FROM public.profiles WHERE id = auth.uid()));
+CREATE POLICY "recon_own_update" ON public.recon_sheets FOR UPDATE
+  USING (driver_id = (SELECT driver_id FROM public.profiles WHERE id = auth.uid()))
+  WITH CHECK (driver_id = (SELECT driver_id FROM public.profiles WHERE id = auth.uid()));
+CREATE POLICY "recon_admin" ON public.recon_sheets FOR ALL
   USING (public.is_admin())
   WITH CHECK (public.is_admin());
 
