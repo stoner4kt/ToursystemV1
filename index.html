@@ -35,6 +35,7 @@
   <button class="tab-btn active" data-tab="calendar">📅 Calendar</button>
   <button class="tab-btn" data-tab="fleet">🚌 Fleet</button>
   <button class="tab-btn" data-tab="drivers">👥 Drivers</button>
+  <button class="tab-btn" data-tab="recon">📊 Recon Review</button>
   <button class="tab-btn" data-tab="reports">📋 Reports</button>
 </nav>
 
@@ -134,6 +135,21 @@
     <div class="card">
       <div class="card-header"><div class="card-title">Manage Drivers</div><button class="btn btn-amber btn-sm" id="btn-add-driver">+ Add Driver</button></div>
       <div class="table-wrapper"><table><thead><tr><th>Name</th><th>Driver ID</th><th>Phone</th><th>Status</th><th>Actions</th></tr></thead><tbody id="drivers-manage-tbody"><tr><td colspan="5"><div class="skeleton"></div><div class="skeleton"></div></td></tr></tbody></table></div>
+    </div>
+  </div>
+
+  <!-- ═══ RECON REVIEW TAB ═══ -->
+  <div class="tab-panel" id="tab-recon">
+    <div class="card">
+      <div class="card-header">
+        <div>
+          <div class="card-title">Driver Recon Sheets</div>
+          <div class="card-subtitle">Weekly wellness &amp; incident reports</div>
+        </div>
+      </div>
+      <div id="recon-list">
+        <div class="spinner"></div>
+      </div>
     </div>
   </div>
 
@@ -287,6 +303,18 @@
     </div>
     <input type="hidden" id="report-detail-id">
     <div id="report-detail-body"></div>
+  </div>
+</div>
+
+<!-- Recon Detail Modal -->
+<div class="modal-overlay" id="modal-recon-detail">
+  <div class="modal">
+    <div class="modal-header">
+      <span class="modal-title">Recon Sheet Detail</span>
+      <button class="modal-close" onclick="closeModal('modal-recon-detail')">✕</button>
+    </div>
+    <input type="hidden" id="recon-detail-id">
+    <div id="recon-detail-body"></div>
   </div>
 </div>
 
