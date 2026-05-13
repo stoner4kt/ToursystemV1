@@ -467,7 +467,7 @@ async function loadReconReview() {
   container.innerHTML = '<div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div>';
 
   const { data, error } = await sb.from('recon_sheets')
-    .select('*, profiles(name, driver_id)')
+    .select('*, profiles!recon_sheets_driver_id_fkey(name, driver_id)')
     .order('week_start', { ascending: false });
 
   if (error) {
@@ -499,7 +499,7 @@ async function loadReconReview() {
 
 async function openReconDetail(id) {
   const { data: sheet, error } = await sb.from('recon_sheets')
-    .select('*, profiles(name, driver_id)')
+    .select('*, profiles!recon_sheets_driver_id_fkey(name, driver_id)')
     .eq('id', id)
     .single();
   if (error || !sheet) {
@@ -537,7 +537,7 @@ async function openReconDetail(id) {
 
 async function downloadReconPDF(id) {
   const { data: sheet, error } = await sb.from('recon_sheets')
-    .select('*, profiles(name, driver_id)')
+    .select('*, profiles!recon_sheets_driver_id_fkey(name, driver_id)')
     .eq('id', id)
     .single();
   if (error || !sheet) {
