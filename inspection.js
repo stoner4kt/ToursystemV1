@@ -201,19 +201,46 @@ function resetForm() {
 
 // ── Init ──────────────────────────────────────────────────────
 (async () => {
-  const session = await initAuth();
+  const session = await initAuth('driver');
   if (!session) return;
 
-  document.getElementById('driver-name').textContent = currentProfile?.name || 'Driver';
-  
-  // Initialize Signature Pads
-  driverSigPad = new SignaturePad(document.getElementById('driver-signature-pad'), { backgroundColor: 'rgb(255, 255, 255)' });
-  clientSigPad = new SignaturePad(document.getElementById('client-signature-pad'), { backgroundColor: 'rgb(255, 255, 255)' });
+  const name = currentProfile?.name || 'Driver';
+  const nameEl        = document.getElementById('driver-name');
+  const sidebarNameEl = document.getElementById('sidebar-driver-name');
+  if (nameEl)        nameEl.textContent        = name;
+  if (sidebarNameEl) sidebarNameEl.textContent = name;
+
+  initSidebar();
+  document.getElementById('btn-signout-sidebar')?.addEventListener('click', signOut);
+
+  driverSigPad = new SignaturePad(document.getElementById('driver-signature-pad'), { backgroundColor: 'rgb(255,255,255)' });
+  clientSigPad = new SignaturePad(document.getElementById('client-signature-pad'), { backgroundColor: 'rgb(255,255,255)' });
 
   document.getElementById('clear-driver-sig').addEventListener('click', () => driverSigPad.clear());
   document.getElementById('clear-client-sig').addEventListener('click', () => clientSigPad.clear());
 
   await loadVehicleOptions();
+  await loadBookingOptions();
   buildChecklist();
   setupMediaCapture();
+  updateSyncBadge();
 })();
+
+async function loadBookingOptions() {
+  if (!currentProfile?.driver_id) return;
+  const today = new Date().toISOString().split('T')[0];
+  const { data } = await sb.from('bookings')
+    .select('id, invoice_no, client_name, route')
+    .eq('assigned_driver_id', currentProfile.driver_id)
+    .gte('end_date', today)
+    .neq('status', 'cancelled')
+    .order('start_date');
+  const sel = document.getElementById('invoice-select');
+  if (!sel || !data?.length) return;
+  data.forEach((b) => {
+    const opt = document.createElement('option');
+    opt.value = b.invoice_no;
+    opt.textContent = `${b.invoice_no} — ${b.client_name}`;
+    sel.appendChild(opt);
+  });
+}

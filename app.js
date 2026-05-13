@@ -1,69 +1,53 @@
 // ============================================================
-//  TRANSROUTE PWA — SHARED UTILITIES & AUTH
+//  CCSHUTTLES PWA — SHARED UTILITIES & AUTH
 // ============================================================
 
-// ── Supabase Client ──────────────────────────────────────────
 const { createClient } = supabase;
 const sb = createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON_KEY);
 
-// ── Auth State ───────────────────────────────────────────────
-let currentUser  = null;
+let currentUser    = null;
 let currentProfile = null;
 
 async function initAuth(requiredRole = null) {
   const { data: { session } } = await sb.auth.getSession();
   if (!session) {
-    window.location.href = 'login.html';
+    window.location.href = requiredRole === 'admin' ? 'admin-login.html' : 'driver-login.html';
     return null;
   }
   currentUser = session.user;
 
-  const { data: profile, error } = await sb.from('profiles')
+  const { data: profile } = await sb.from('profiles')
     .select('*').eq('id', currentUser.id).single();
-  
-  // DEBUG: Add this to see exactly what is happening in your mobile console
-  console.log("Session User ID:", currentUser.id);
-  console.log("Profile Data:", profile);
 
   currentProfile = profile;
 
-  // FIX: Only redirect if we POSITIVELY have a profile and the role is wrong
   if (requiredRole && profile && profile.role !== requiredRole) {
-    if (requiredRole === 'admin') {
-      window.location.href = 'inspection.html';
-    } else {
-      window.location.href = 'index.html';
-    }
+    window.location.href = profile.role === 'admin' ? 'index.html' : 'driver-dashboard.html';
     return null;
   }
-  
-  // If no profile is found yet, don't kick the user out immediately
+
   if (!profile) {
-     console.warn("Profile not found in database yet.");
-     return { user: currentUser, profile: null };
+    console.warn('Profile not found in database yet.');
+    return { user: currentUser, profile: null };
   }
 
   return { user: currentUser, profile };
 }
 
 async function signOut() {
+  const role = currentProfile?.role || 'driver';
   await sb.auth.signOut();
   clearIndexedDB();
-  window.location.href = 'login.html';
+  window.location.href = role === 'admin' ? 'admin-login.html' : 'driver-login.html';
 }
 
-// ── Service Worker Registration ──────────────────────────────
+// ── Service Worker ────────────────────────────────────────────
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', async () => {
     try {
       const reg = await navigator.serviceWorker.register('/sw.js');
-      console.log('SW registered:', reg.scope);
-
-      // Listen for sync messages from SW
       navigator.serviceWorker.addEventListener('message', (event) => {
-        if (event.data?.type === 'SYNC_INSPECTIONS') {
-          syncPendingInspections();
-        }
+        if (event.data?.type === 'SYNC_INSPECTIONS') syncPendingInspections();
       });
     } catch (err) {
       console.warn('SW registration failed:', err);
@@ -74,8 +58,7 @@ if ('serviceWorker' in navigator) {
 // ── Offline Detection ─────────────────────────────────────────
 const offlineBanner = document.getElementById('offline-banner');
 function updateOnlineStatus() {
-  const isOffline = !navigator.onLine;
-  if (offlineBanner) offlineBanner.classList.toggle('visible', isOffline);
+  if (offlineBanner) offlineBanner.classList.toggle('visible', !navigator.onLine);
 }
 window.addEventListener('online',  () => { updateOnlineStatus(); syncPendingInspections(); });
 window.addEventListener('offline', updateOnlineStatus);
@@ -93,9 +76,7 @@ function openIndexedDB() {
     req.onupgradeneeded = (e) => {
       const db = e.target.result;
       if (!db.objectStoreNames.contains('pending_inspections')) {
-        const store = db.createObjectStore('pending_inspections', {
-          keyPath: 'local_id', autoIncrement: true,
-        });
+        const store = db.createObjectStore('pending_inspections', { keyPath: 'local_id', autoIncrement: true });
         store.createIndex('synced', 'synced', { unique: false });
       }
     };
@@ -108,8 +89,8 @@ async function saveInspectionOffline(data) {
   const db     = await openIndexedDB();
   const record = { ...data, synced: false, saved_at: new Date().toISOString() };
   return new Promise((resolve, reject) => {
-    const tx   = db.transaction('pending_inspections', 'readwrite');
-    const req  = tx.objectStore('pending_inspections').add(record);
+    const tx  = db.transaction('pending_inspections', 'readwrite');
+    const req = tx.objectStore('pending_inspections').add(record);
     req.onsuccess = () => resolve(req.result);
     req.onerror   = () => reject(req.error);
   });
@@ -129,8 +110,8 @@ async function getPendingInspections() {
 async function markInspectionSynced(localId) {
   const db = await openIndexedDB();
   return new Promise((resolve, reject) => {
-    const tx    = db.transaction('pending_inspections', 'readwrite');
-    const store = tx.objectStore('pending_inspections');
+    const tx     = db.transaction('pending_inspections', 'readwrite');
+    const store  = tx.objectStore('pending_inspections');
     const getReq = store.get(localId);
     getReq.onsuccess = () => {
       const rec = getReq.result;
@@ -148,10 +129,7 @@ async function clearIndexedDB() {
 }
 
 async function getPendingCount() {
-  try {
-    const pending = await getPendingInspections();
-    return pending.length;
-  } catch { return 0; }
+  try { const p = await getPendingInspections(); return p.length; } catch { return 0; }
 }
 
 // ── Sync Pending Inspections ──────────────────────────────────
@@ -161,34 +139,23 @@ async function syncPendingInspections() {
     const pending = await getPendingInspections();
     for (const record of pending) {
       const { local_id, synced, saved_at, mediaFiles, ...payload } = record;
-
-      // Upload any locally-stored media blobs to Cloudinary
       if (mediaFiles && mediaFiles.length > 0) {
         const uploadedUrls = [];
         for (const fileData of mediaFiles) {
-          try {
-            const url = await uploadToCloudinary(fileData.blob, fileData.name);
-            uploadedUrls.push(url);
-          } catch (err) {
-            console.warn('Media upload failed during sync:', err);
-          }
+          try { uploadedUrls.push(await uploadToCloudinary(fileData.blob, fileData.name)); }
+          catch (err) { console.warn('Media upload failed during sync:', err); }
         }
         payload.media_urls = uploadedUrls;
       }
-
       const { data: syncedData, error } = await sb.from('inspections').insert(payload).select().single();
       if (!error) {
         await markInspectionSynced(local_id);
-        if (payload.has_critical_fault) {
-          await triggerFaultAlert(payload);
-        }
+        if (payload.has_critical_fault) await triggerFaultAlert(payload);
         await postToWorkerWebhook(CONFIG.WORKER_INSPECTIONS_WEBHOOK_URL, syncedData || payload);
       }
     }
     updateSyncBadge();
-  } catch (err) {
-    console.warn('Sync error:', err);
-  }
+  } catch (err) { console.warn('Sync error:', err); }
 }
 
 async function updateSyncBadge() {
@@ -204,47 +171,28 @@ async function uploadToCloudinary(file, folder = 'inspections') {
   const formData = new FormData();
   formData.append('file', file);
   formData.append('upload_preset', CONFIG.CLOUDINARY_UPLOAD_PRESET);
-  formData.append('folder', `transroute/${folder}`);
-
-  const res = await fetch(
-    `https://api.cloudinary.com/v1_1/${CONFIG.CLOUDINARY_CLOUD_NAME}/auto/upload`,
-    { method: 'POST', body: formData }
-  );
+  formData.append('folder', `ccshuttles/${folder}`);
+  const res = await fetch(`https://api.cloudinary.com/v1_1/${CONFIG.CLOUDINARY_CLOUD_NAME}/auto/upload`, { method: 'POST', body: formData });
   if (!res.ok) throw new Error('Cloudinary upload failed');
-  const json = await res.json();
-  return json.secure_url;
+  return (await res.json()).secure_url;
 }
 
-// ── Fault Alert (Edge Function) ───────────────────────────────
+// ── Fault Alert ───────────────────────────────────────────────
 async function triggerFaultAlert(inspection) {
   try {
     const { data: { session } } = await sb.auth.getSession();
     await fetch(CONFIG.FAULT_ALERT_FUNCTION_URL, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${session.access_token}`,
-      },
-      body: JSON.stringify({
-        vehicle_reg:   inspection.vehicle_reg,
-        driver_id:     inspection.driver_id,
-        faults:        inspection.faults_json,
-        inspection_id: inspection.id,
-      }),
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
+      body: JSON.stringify({ vehicle_reg: inspection.vehicle_reg, driver_id: inspection.driver_id, faults: inspection.faults_json, inspection_id: inspection.id }),
     });
-  } catch (err) {
-    console.warn('Fault alert failed:', err);
-  }
+  } catch (err) { console.warn('Fault alert failed:', err); }
 }
 
 // ── Toast Notifications ───────────────────────────────────────
 function toast(message, type = 'info', duration = 3500) {
   let container = document.getElementById('toast-container');
-  if (!container) {
-    container = document.createElement('div');
-    container.id = 'toast-container';
-    document.body.appendChild(container);
-  }
+  if (!container) { container = document.createElement('div'); container.id = 'toast-container'; document.body.appendChild(container); }
   const icons = { success: '✓', error: '✕', warning: '⚠', info: 'ℹ' };
   const el = document.createElement('div');
   el.className = `toast toast-${type}`;
@@ -256,16 +204,11 @@ function toast(message, type = 'info', duration = 3500) {
 // ── Formatting Helpers ────────────────────────────────────────
 function formatDate(dateStr) {
   if (!dateStr) return '—';
-  return new Date(dateStr).toLocaleDateString('en-ZA', {
-    day: '2-digit', month: 'short', year: 'numeric',
-  });
+  return new Date(dateStr).toLocaleDateString('en-ZA', { day: '2-digit', month: 'short', year: 'numeric' });
 }
 function formatDateTime(dateStr) {
   if (!dateStr) return '—';
-  return new Date(dateStr).toLocaleString('en-ZA', {
-    day: '2-digit', month: 'short', year: 'numeric',
-    hour: '2-digit', minute: '2-digit',
-  });
+  return new Date(dateStr).toLocaleString('en-ZA', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
 }
 function formatMileage(km) {
   if (!km && km !== 0) return '—';
@@ -273,47 +216,51 @@ function formatMileage(km) {
 }
 function statusBadge(status) {
   const map = {
-    active:         'badge-green',
-    confirmed:      'badge-green',
-    completed:      'badge-blue',
-    pending:        'badge-amber',
-    maintenance:    'badge-amber',
-    invoiced:       'badge-amber',
-    decommissioned: 'badge-gray',
-    cancelled:      'badge-gray',
-    'pre-trip':     'badge-blue',
-    'post-trip':    'badge-green',
+    active: 'badge-green', confirmed: 'badge-green', completed: 'badge-blue',
+    pending: 'badge-amber', maintenance: 'badge-amber', invoiced: 'badge-amber',
+    submitted: 'badge-blue', reviewed: 'badge-green',
+    decommissioned: 'badge-gray', cancelled: 'badge-gray',
+    'pre-trip': 'badge-blue', 'post-trip': 'badge-green',
   };
   return `<span class="badge ${map[status] || 'badge-gray'}">${status}</span>`;
 }
 
 // ── Modal Helpers ─────────────────────────────────────────────
-function openModal(id) {
-  document.getElementById(id)?.classList.add('open');
-}
-function closeModal(id) {
-  document.getElementById(id)?.classList.remove('open');
-}
-// Close modal on overlay click
+function openModal(id)  { document.getElementById(id)?.classList.add('open'); }
+function closeModal(id) { document.getElementById(id)?.classList.remove('open'); }
 document.querySelectorAll('.modal-overlay').forEach((overlay) => {
-  overlay.addEventListener('click', (e) => {
-    if (e.target === overlay) overlay.classList.remove('open');
-  });
+  overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.classList.remove('open'); });
 });
 
-
+// ── Webhook ───────────────────────────────────────────────────
 async function postToWorkerWebhook(url, payload) {
   if (!url || url.includes('YOUR_WORKER')) return;
   try {
     await fetch(url, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${CONFIG.WORKER_SHARED_TOKEN || ''}`,
-      },
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${CONFIG.WORKER_SHARED_TOKEN || ''}` },
       body: JSON.stringify(payload),
     });
-  } catch (err) {
-    console.warn('Worker webhook failed:', err);
-  }
+  } catch (err) { console.warn('Worker webhook failed:', err); }
+}
+
+// ── Sidebar Toggle ─────────────────────────────────────────────
+function initSidebar() {
+  const toggleBtn  = document.getElementById('sidebar-toggle');
+  const sidebar    = document.getElementById('app-sidebar');
+  const overlay    = document.getElementById('sidebar-overlay');
+  const closeBtn   = document.getElementById('sidebar-close');
+
+  if (!toggleBtn || !sidebar) return;
+
+  function openSidebar()  { sidebar.classList.add('open'); overlay?.classList.add('open'); }
+  function closeSidebar() { sidebar.classList.remove('open'); overlay?.classList.remove('open'); }
+
+  toggleBtn.addEventListener('click', openSidebar);
+  closeBtn?.addEventListener('click', closeSidebar);
+  overlay?.addEventListener('click', closeSidebar);
+
+  sidebar.querySelectorAll('.sidebar-nav-link').forEach((link) => {
+    link.addEventListener('click', () => { if (!link.dataset.keepOpen) closeSidebar(); });
+  });
 }

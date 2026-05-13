@@ -4,38 +4,90 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="theme-color" content="#0f2744">
-  <title>TransRoute — Admin</title>
+  <title>CCSHUTTLES — Admin</title>
   <link rel="manifest" href="manifest.json">
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
 
-<!-- ── OFFLINE BANNER ─────────────────────────────────────── -->
 <div id="offline-banner">📵 You are offline — changes will sync when reconnected</div>
+
+<!-- ── SIDEBAR OVERLAY ──────────────────────────────────────── -->
+<div class="sidebar-overlay" id="sidebar-overlay"></div>
+
+<!-- ── SIDEBAR ─────────────────────────────────────────────── -->
+<nav id="app-sidebar">
+  <div class="sidebar-header">
+    <div class="sidebar-brand">CC<span>SHUTTLES</span></div>
+    <button class="sidebar-close" id="sidebar-close" aria-label="Close menu">✕</button>
+  </div>
+  <div class="sidebar-user">
+    <div class="sidebar-user-name" id="sidebar-admin-name">Admin</div>
+    <div class="sidebar-user-role">Administrator</div>
+  </div>
+  <div class="sidebar-nav">
+    <div class="sidebar-nav-item">
+      <button class="sidebar-nav-link active" data-tab="calendar" onclick="switchTab('calendar')">
+        <span class="sidebar-nav-icon">📅</span> Calendar
+      </button>
+    </div>
+    <div class="sidebar-nav-item">
+      <button class="sidebar-nav-link" data-tab="fleet" onclick="switchTab('fleet')">
+        <span class="sidebar-nav-icon">🚌</span> Fleet Vehicles
+      </button>
+    </div>
+    <div class="sidebar-nav-item">
+      <button class="sidebar-nav-link" data-tab="drivers" onclick="switchTab('drivers')">
+        <span class="sidebar-nav-icon">👥</span> Drivers
+      </button>
+    </div>
+    <div class="sidebar-nav-item">
+      <button class="sidebar-nav-link" data-tab="recon" onclick="switchTab('recon')">
+        <span class="sidebar-nav-icon">📊</span> Recon Review
+      </button>
+    </div>
+    <div class="sidebar-nav-item">
+      <button class="sidebar-nav-link" data-tab="reports" onclick="switchTab('reports')">
+        <span class="sidebar-nav-icon">📋</span> Reports
+      </button>
+    </div>
+  </div>
+  <div class="sidebar-footer">
+    <button class="sidebar-logout" id="btn-signout-sidebar">
+      <span class="sidebar-nav-icon">⏻</span> Sign Out
+    </button>
+  </div>
+</nav>
 
 <!-- ── HEADER ─────────────────────────────────────────────── -->
 <header class="app-header">
-  <div class="logo">
-    <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" stroke-width="2.2">
-      <rect x="1" y="3" width="15" height="13" rx="2"/><path d="M16 8h4l3 5v3h-7V8z"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/>
-    </svg>
-    Trans<span>Route</span>&nbsp;<span style="font-weight:400;font-size:.8rem;opacity:.6">Admin</span>
+  <div style="display:flex;align-items:center;gap:10px">
+    <button class="btn-icon" id="sidebar-toggle" aria-label="Open menu">
+      <div class="hamburger-icon"><span></span><span></span><span></span></div>
+    </button>
+    <div class="logo">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" stroke-width="2.2">
+        <rect x="1" y="3" width="15" height="13" rx="2"/><path d="M16 8h4l3 5v3h-7V8z"/>
+        <circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/>
+      </svg>
+      CC<span>SHUTTLES</span>
+    </div>
   </div>
   <div class="header-actions">
     <span data-sync-wrapper style="display:none">
       <span class="sync-count sync-badge">0</span>
     </span>
-    <span id="admin-name" style="color:rgba(255,255,255,.7);font-size:.82rem"></span>
-    <button class="btn-icon" id="btn-signout" title="Sign out">⏻</button>
+    <span class="header-user" id="admin-name"></span>
+    <button class="btn-icon" id="btn-signout" title="Sign out" style="font-size:.95rem">⏻</button>
   </div>
 </header>
 
 <!-- ── TAB NAV ──────────────────────────────────────────────── -->
-<nav class="tab-nav">
+<nav class="tab-nav" id="main-tab-nav">
   <button class="tab-btn active" data-tab="calendar">📅 Calendar</button>
   <button class="tab-btn" data-tab="fleet">🚌 Fleet</button>
   <button class="tab-btn" data-tab="drivers">👥 Drivers</button>
-  <button class="tab-btn" data-tab="recon">📊 Recon Review</button>
+  <button class="tab-btn" data-tab="recon">📊 Recon</button>
   <button class="tab-btn" data-tab="reports">📋 Reports</button>
 </nav>
 
@@ -44,7 +96,6 @@
 
   <!-- ═══ CALENDAR TAB ═══ -->
   <div class="tab-panel active" id="tab-calendar">
-
     <div class="stats-row">
       <div class="stat-card"><div class="stat-value" id="stat-total">—</div><div class="stat-label">Total Bookings</div></div>
       <div class="stat-card"><div class="stat-value" id="stat-confirmed" style="color:var(--green)">—</div><div class="stat-label">Confirmed</div></div>
@@ -65,41 +116,18 @@
       <div class="card-header">
         <div>
           <div class="card-title">Bookings</div>
-          <div class="card-subtitle">Click a date on the calendar to filter</div>
+          <div class="card-subtitle">Click a date to filter</div>
         </div>
         <button class="btn btn-amber btn-sm" id="btn-add-booking">+ New</button>
       </div>
       <div id="day-bookings">
-        <p style="color:var(--text-muted);font-size:.88rem">Select a date above to view bookings.</p>
+        <p style="color:var(--text-muted);font-size:.85rem">Select a date above to view bookings.</p>
       </div>
     </div>
   </div>
 
   <!-- ═══ FLEET TAB ═══ -->
   <div class="tab-panel" id="tab-fleet">
-    <div class="card">
-      <div class="card-header">
-        <div>
-          <div class="card-title">Invite Driver</div>
-          <div class="card-subtitle">Create/send driver magic-link invitation</div>
-        </div>
-      </div>
-      <form id="form-driver-invite">
-        <div class="form-row">
-          <div class="form-group">
-            <label>Driver Name <span class="required">*</span></label>
-            <input type="text" id="driver-invite-name" class="form-control" required placeholder="Driver full name">
-          </div>
-          <div class="form-group">
-            <label>Driver Email <span class="required">*</span></label>
-            <input type="email" id="driver-invite-email" class="form-control" required placeholder="driver@example.com">
-          </div>
-        </div>
-        <button type="submit" class="btn btn-amber btn-sm">Send Invite Link</button>
-        <p id="driver-invite-msg" style="margin-top:10px;font-size:.85rem;color:var(--text-muted)"></p>
-      </form>
-    </div>
-
     <div class="card">
       <div class="card-header">
         <div class="card-title">Fleet Vehicles</div>
@@ -114,27 +142,29 @@
             </tr>
           </thead>
           <tbody id="fleet-tbody">
-            <tr><td colspan="7"><div class="skeleton-table-row"><div class="skeleton-table-cell" style="width:20%"></div><div class="skeleton-table-cell" style="width:20%"></div><div class="skeleton-table-cell" style="width:10%"></div><div class="skeleton-table-cell" style="width:15%"></div><div class="skeleton-table-cell" style="width:15%"></div><div class="skeleton-table-cell" style="width:10%"></div><div class="skeleton-table-cell" style="width:10%"></div></div></td></tr>
+            <tr><td colspan="7"><div class="spinner"></div></td></tr>
           </tbody>
         </table>
       </div>
     </div>
   </div>
 
-
   <!-- ═══ DRIVERS TAB ═══ -->
   <div class="tab-panel" id="tab-drivers">
     <div class="card">
       <div class="card-header"><div class="card-title">Active Trips</div></div>
-      <div class="table-wrapper"><table><thead><tr><th>Invoice</th><th>Client</th><th>Driver</th><th>Vehicle</th><th>Dates</th></tr></thead><tbody id="drivers-active-trips"><tr><td colspan="5"><div class="skeleton"></div><div class="skeleton"></div></td></tr></tbody></table></div>
+      <div class="table-wrapper"><table><thead><tr><th>Invoice</th><th>Client</th><th>Driver</th><th>Vehicle</th><th>Dates</th></tr></thead><tbody id="drivers-active-trips"><tr><td colspan="5"><div class="spinner"></div></td></tr></tbody></table></div>
     </div>
     <div class="card">
       <div class="card-header"><div class="card-title">Upcoming Trips</div></div>
-      <div class="table-wrapper"><table><thead><tr><th>Invoice</th><th>Client</th><th>Driver</th><th>Vehicle</th><th>Start Date</th></tr></thead><tbody id="drivers-upcoming-trips"><tr><td colspan="5"><div class="skeleton"></div><div class="skeleton"></div></td></tr></tbody></table></div>
+      <div class="table-wrapper"><table><thead><tr><th>Invoice</th><th>Client</th><th>Driver</th><th>Vehicle</th><th>Start Date</th></tr></thead><tbody id="drivers-upcoming-trips"><tr><td colspan="5"><div class="spinner"></div></td></tr></tbody></table></div>
     </div>
     <div class="card">
-      <div class="card-header"><div class="card-title">Manage Drivers</div><button class="btn btn-amber btn-sm" id="btn-add-driver">+ Add Driver</button></div>
-      <div class="table-wrapper"><table><thead><tr><th>Name</th><th>Driver ID</th><th>Phone</th><th>Status</th><th>Actions</th></tr></thead><tbody id="drivers-manage-tbody"><tr><td colspan="5"><div class="skeleton"></div><div class="skeleton"></div></td></tr></tbody></table></div>
+      <div class="card-header">
+        <div class="card-title">Manage Drivers</div>
+        <button class="btn btn-amber btn-sm" id="btn-add-driver">+ Add Driver</button>
+      </div>
+      <div class="table-wrapper"><table><thead><tr><th>Name</th><th>Driver ID</th><th>Phone</th><th>Status</th><th>Actions</th></tr></thead><tbody id="drivers-manage-tbody"><tr><td colspan="5"><div class="spinner"></div></td></tr></tbody></table></div>
     </div>
   </div>
 
@@ -144,12 +174,10 @@
       <div class="card-header">
         <div>
           <div class="card-title">Driver Recon Sheets</div>
-          <div class="card-subtitle">Weekly wellness &amp; incident reports</div>
+          <div class="card-subtitle">Weekly trip & cost reports</div>
         </div>
       </div>
-      <div id="recon-list">
-        <div class="spinner"></div>
-      </div>
+      <div id="recon-list"><div class="spinner"></div></div>
     </div>
   </div>
 
@@ -168,13 +196,26 @@
 
 </main>
 
-<div class="modal-overlay" id="modal-driver">
-  <div class="modal"><div class="modal-header"><span class="modal-title" id="modal-driver-title">Add Driver</span><button class="modal-close" onclick="closeModal('modal-driver')">✕</button></div><form id="form-driver"><input type="hidden" id="driver-id"><div class="form-group"><label>Name <span class="required">*</span></label><input type="text" id="driver-name-input" class="form-control" required></div><div class="form-group" id="driver-email-group"><label>Email <span class="required">*</span></label><input type="email" id="driver-email-input" class="form-control"></div><div class="form-group" id="driver-code-group" style="display:none"><label>Driver ID</label><input type="text" id="driver-code-input" class="form-control" readonly></div><div class="form-group"><label>Phone</label><input type="text" id="driver-phone-input" class="form-control"></div><div class="form-group" id="driver-active-group" style="display:none"><label>Status</label><select id="driver-active-input" class="form-control"><option value="true">Active</option><option value="false">Inactive</option></select></div><button type="submit" class="btn btn-amber btn-full">Save Driver</button></form></div>
-</div>
+<!-- ═══ MODALS ═══ -->
 
-<!-- ═══════════════════════════════════════════════════════════
-     MODALS
-     ═══════════════════════════════════════════════════════════ -->
+<!-- Driver Modal -->
+<div class="modal-overlay" id="modal-driver">
+  <div class="modal">
+    <div class="modal-header">
+      <span class="modal-title" id="modal-driver-title">Add Driver</span>
+      <button class="modal-close" onclick="closeModal('modal-driver')">✕</button>
+    </div>
+    <form id="form-driver">
+      <input type="hidden" id="driver-id">
+      <div class="form-group"><label>Name <span class="required">*</span></label><input type="text" id="driver-name-input" class="form-control" required></div>
+      <div class="form-group" id="driver-email-group"><label>Email <span class="required">*</span></label><input type="email" id="driver-email-input" class="form-control"></div>
+      <div class="form-group" id="driver-code-group" style="display:none"><label>Driver ID</label><input type="text" id="driver-code-input" class="form-control" readonly></div>
+      <div class="form-group"><label>Phone</label><input type="text" id="driver-phone-input" class="form-control"></div>
+      <div class="form-group" id="driver-active-group" style="display:none"><label>Status</label><select id="driver-active-input" class="form-control"><option value="true">Active</option><option value="false">Inactive</option></select></div>
+      <button type="submit" class="btn btn-amber btn-full">Save Driver</button>
+    </form>
+  </div>
+</div>
 
 <!-- Booking Modal -->
 <div class="modal-overlay" id="modal-booking">
@@ -186,39 +227,18 @@
     <form id="form-booking">
       <input type="hidden" id="booking-id">
       <div class="form-row">
-        <div class="form-group">
-          <label>Invoice No <span class="required">*</span></label>
-          <input type="text" id="booking-invoice" class="form-control" required>
-        </div>
-        <div class="form-group">
-          <label>Client Name <span class="required">*</span></label>
-          <input type="text" id="booking-client" class="form-control" required>
-        </div>
+        <div class="form-group"><label>Invoice No <span class="required">*</span></label><input type="text" id="booking-invoice" class="form-control" required></div>
+        <div class="form-group"><label>Client Name <span class="required">*</span></label><input type="text" id="booking-client" class="form-control" required></div>
       </div>
       <div class="form-row">
-        <div class="form-group">
-          <label>Route</label>
-          <input type="text" id="booking-route" class="form-control" placeholder="e.g. Cape Town → George">
-        </div>
-        <div class="form-group">
-          <label>Start Date <span class="required">*</span></label>
-          <input type="date" id="booking-start-date" class="form-control" required>
-        </div>
+        <div class="form-group"><label>Route</label><input type="text" id="booking-route" class="form-control" placeholder="e.g. Cape Town → George"></div>
+        <div class="form-group"><label>Start Date <span class="required">*</span></label><input type="date" id="booking-start-date" class="form-control" required></div>
       </div>
       <div class="form-row">
-        <div class="form-group">
-          <label>End Date <span class="required">*</span></label>
-          <input type="date" id="booking-end-date" class="form-control" required>
-        </div>
-        <div class="form-group">
-          <label>Assign Driver</label>
-          <select id="booking-driver" class="form-control"><option value="">— Unassigned —</option></select>
-        </div>
+        <div class="form-group"><label>End Date <span class="required">*</span></label><input type="date" id="booking-end-date" class="form-control" required></div>
+        <div class="form-group"><label>Assign Driver</label><select id="booking-driver" class="form-control"><option value="">— Unassigned —</option></select></div>
       </div>
-      <div class="form-group">
-        <label>Assign Vehicle</label>
-        <select id="booking-vehicle" class="form-control"><option value="">— Unassigned —</option></select>
-      </div>
+      <div class="form-group"><label>Assign Vehicle</label><select id="booking-vehicle" class="form-control"><option value="">— Unassigned —</option></select></div>
       <div class="form-group">
         <label>Status</label>
         <select id="booking-status" class="form-control">
@@ -229,10 +249,7 @@
           <option value="cancelled">Cancelled</option>
         </select>
       </div>
-      <div class="form-group">
-        <label>Notes</label>
-        <textarea id="booking-notes" class="form-control" rows="2"></textarea>
-      </div>
+      <div class="form-group"><label>Notes</label><textarea id="booking-notes" class="form-control" rows="2"></textarea></div>
       <button type="submit" class="btn btn-amber btn-full">Save Booking</button>
     </form>
   </div>
@@ -248,47 +265,19 @@
     <form id="form-vehicle">
       <input type="hidden" id="vehicle-id">
       <div class="form-row">
-        <div class="form-group">
-          <label>Registration No <span class="required">*</span></label>
-          <input type="text" id="vehicle-reg" class="form-control" required placeholder="CA 123 456">
-        </div>
-        <div class="form-group">
-          <label>Status</label>
-          <select id="vehicle-status" class="form-control">
-            <option value="active">Active</option>
-            <option value="maintenance">In Maintenance</option>
-            <option value="decommissioned">Decommissioned</option>
-          </select>
-        </div>
+        <div class="form-group"><label>Registration No <span class="required">*</span></label><input type="text" id="vehicle-reg" class="form-control" required placeholder="CA 123 456"></div>
+        <div class="form-group"><label>Status</label><select id="vehicle-status" class="form-control"><option value="active">Active</option><option value="maintenance">In Maintenance</option><option value="decommissioned">Decommissioned</option></select></div>
       </div>
       <div class="form-row">
-        <div class="form-group">
-          <label>Make</label>
-          <input type="text" id="vehicle-make" class="form-control" placeholder="Toyota">
-        </div>
-        <div class="form-group">
-          <label>Model <span class="required">*</span></label>
-          <input type="text" id="vehicle-model" class="form-control" required placeholder="Quantum 2.5 TDi">
-        </div>
+        <div class="form-group"><label>Make</label><input type="text" id="vehicle-make" class="form-control" placeholder="Toyota"></div>
+        <div class="form-group"><label>Model <span class="required">*</span></label><input type="text" id="vehicle-model" class="form-control" required placeholder="Quantum 2.5 TDi"></div>
       </div>
       <div class="form-row">
-        <div class="form-group">
-          <label>Year</label>
-          <input type="number" id="vehicle-year" class="form-control" min="1990" max="2030" placeholder="2022">
-        </div>
-        <div class="form-group">
-          <label>Current Mileage (km)</label>
-          <input type="number" id="vehicle-mileage" class="form-control" min="0" placeholder="85000">
-        </div>
+        <div class="form-group"><label>Year</label><input type="number" id="vehicle-year" class="form-control" min="1990" max="2030" placeholder="2022"></div>
+        <div class="form-group"><label>Current Mileage (km)</label><input type="number" id="vehicle-mileage" class="form-control" min="0" placeholder="85000"></div>
       </div>
-      <div class="form-group">
-        <label>Next Service Due (km)</label>
-        <input type="number" id="vehicle-service-km" class="form-control" min="0" placeholder="90000">
-      </div>
-      <div class="form-group">
-        <label>Notes</label>
-        <textarea id="vehicle-notes" class="form-control" rows="2"></textarea>
-      </div>
+      <div class="form-group"><label>Next Service Due (km)</label><input type="number" id="vehicle-service-km" class="form-control" min="0" placeholder="90000"></div>
+      <div class="form-group"><label>Notes</label><textarea id="vehicle-notes" class="form-control" rows="2"></textarea></div>
       <button type="submit" class="btn btn-amber btn-full">Save Vehicle</button>
     </form>
   </div>

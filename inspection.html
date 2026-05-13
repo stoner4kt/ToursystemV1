@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <meta name="theme-color" content="#0f2744">
-  <title>TransRoute — Inspection</title>
+  <title>CCSHUTTLES — Inspection</title>
   <link rel="manifest" href="manifest.json">
   <link rel="stylesheet" href="style.css">
   <script src="https://unpkg.com/pdf-lib/dist/pdf-lib.min.js"></script>
@@ -13,43 +13,96 @@
 
 <div id="offline-banner">📵 Offline — inspection will be saved and synced when reconnected</div>
 
+<!-- ── SIDEBAR OVERLAY ──────────────────────────────────────── -->
+<div class="sidebar-overlay" id="sidebar-overlay"></div>
+
+<!-- ── SIDEBAR ─────────────────────────────────────────────── -->
+<nav id="app-sidebar">
+  <div class="sidebar-header">
+    <div class="sidebar-brand">CC<span>SHUTTLES</span></div>
+    <button class="sidebar-close" id="sidebar-close" aria-label="Close menu">✕</button>
+  </div>
+  <div class="sidebar-user">
+    <div class="sidebar-user-name" id="sidebar-driver-name">Driver</div>
+    <div class="sidebar-user-role">Driver Portal</div>
+  </div>
+  <div class="sidebar-nav">
+    <div class="sidebar-nav-item">
+      <a href="driver-dashboard.html" class="sidebar-nav-link">
+        <span class="sidebar-nav-icon">✅</span> My Tasks
+      </a>
+    </div>
+    <div class="sidebar-nav-item">
+      <a href="inspection.html" class="sidebar-nav-link active">
+        <span class="sidebar-nav-icon">🔍</span> Inspection Sheet
+      </a>
+    </div>
+    <div class="sidebar-nav-item">
+      <a href="driver-dashboard.html#recon" class="sidebar-nav-link">
+        <span class="sidebar-nav-icon">📊</span> Recon Sheet
+      </a>
+    </div>
+    <div class="sidebar-divider"></div>
+    <div class="sidebar-nav-item">
+      <span data-sync-wrapper style="display:none">
+        <button class="sidebar-nav-link" style="color:var(--amber)">
+          <span class="sidebar-nav-icon">🔄</span> Pending Sync: <span class="sync-count">0</span>
+        </button>
+      </span>
+    </div>
+  </div>
+  <div class="sidebar-footer">
+    <button class="sidebar-logout" id="btn-signout-sidebar">
+      <span class="sidebar-nav-icon">⏻</span> Sign Out
+    </button>
+  </div>
+</nav>
+
+<!-- ── HEADER ─────────────────────────────────────────────── -->
 <header class="app-header">
-  <div class="logo">
-    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" stroke-width="2.2">
-      <rect x="1" y="3" width="15" height="13" rx="2"/><path d="M16 8h4l3 5v3h-7V8z"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/>
-    </svg>
-    Trans<span>Route</span>
+  <div style="display:flex;align-items:center;gap:10px">
+    <button class="btn-icon" id="sidebar-toggle" aria-label="Open menu">
+      <div class="hamburger-icon"><span></span><span></span><span></span></div>
+    </button>
+    <div class="logo">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" stroke-width="2.2">
+        <rect x="1" y="3" width="15" height="13" rx="2"/><path d="M16 8h4l3 5v3h-7V8z"/>
+        <circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/>
+      </svg>
+      CC<span>SHUTTLES</span>
+    </div>
   </div>
   <div class="header-actions">
     <span data-sync-wrapper style="display:none">
       <span class="sync-count sync-badge">0</span>
     </span>
-    <span id="driver-name" style="color:rgba(255,255,255,.7);font-size:.82rem"></span>
-    <button class="btn-icon" id="btn-signout" title="Sign out" style="width:auto;padding:6px 10px;border-radius:999px">Logout</button>
+    <span class="header-user" id="driver-name"></span>
   </div>
 </header>
 
-<main class="main" style="padding-bottom: 100px">
+<main class="main" style="padding-bottom:90px">
 
   <div id="success-section" style="display:none">
-    <div class="card" style="text-align:center;padding:36px 24px">
-      <div style="font-size:3.5rem;margin-bottom:12px">✅</div>
+    <div class="card" style="text-align:center;padding:36px 20px">
+      <div style="font-size:3.2rem;margin-bottom:12px">✅</div>
       <h2 style="color:var(--navy);margin-bottom:8px">Inspection Submitted</h2>
       <p style="color:var(--text-muted);margin-bottom:20px">Your inspection has been recorded successfully.</p>
       <div id="wa-alert-section" style="display:none;margin-bottom:16px">
         <div class="fault-alert" style="text-align:left">
           <div class="fault-icon">⚠</div>
           <div class="fault-text">
-            Critical faults were detected. An automated alert has been sent to the admin.
+            Critical faults detected. An automated alert has been sent to admin.
             <br><br>
-            <a id="wa-alert-link" href="#" target="_blank"
-               style="background:#25D366;color:#fff;padding:8px 16px;border-radius:8px;font-weight:700;display:inline-block;text-decoration:none">
+            <a id="wa-alert-link" href="#" target="_blank" style="background:#25D366;color:#fff;padding:8px 16px;border-radius:8px;font-weight:700;display:inline-block;text-decoration:none">
               📱 Also send via WhatsApp
             </a>
           </div>
         </div>
       </div>
-      <button class="btn btn-amber btn-full" id="btn-new-inspection" onclick="location.reload()">Start New Inspection</button>
+      <div style="display:flex;flex-direction:column;gap:10px">
+        <button class="btn btn-amber btn-full" onclick="location.reload()">Start New Inspection</button>
+        <a href="driver-dashboard.html" class="btn btn-outline btn-full">Back to Dashboard</a>
+      </div>
     </div>
   </div>
 
@@ -87,21 +140,19 @@
 
     <div class="card">
       <div class="card-title" style="margin-bottom:4px">Photos &amp; Videos</div>
-      <p style="font-size:.82rem;color:var(--text-muted);margin-bottom:14px">Capture before &amp; after photos.</p>
+      <p style="font-size:.8rem;color:var(--text-muted);margin-bottom:14px">Capture before &amp; after photos.</p>
       <div style="margin-bottom:14px">
-        <div style="font-size:.82rem;font-weight:700;color:var(--navy);margin-bottom:8px;text-transform:uppercase;">Before Trip</div>
+        <div style="font-size:.8rem;font-weight:700;color:var(--navy);margin-bottom:8px;text-transform:uppercase">Before Trip</div>
         <label class="media-capture-btn">
-          <span class="icon">📷</span>
-          <span>Tap to capture</span>
+          <span class="icon">📷</span><span>Tap to capture</span>
           <input type="file" class="capture-input" data-type="before" accept="image/*,video/*" capture="environment" multiple>
         </label>
         <div class="media-preview" id="media-preview-before"></div>
       </div>
       <div>
-        <div style="font-size:.82rem;font-weight:700;color:var(--navy);margin-bottom:8px;text-transform:uppercase;">After Trip</div>
+        <div style="font-size:.8rem;font-weight:700;color:var(--navy);margin-bottom:8px;text-transform:uppercase">After Trip</div>
         <label class="media-capture-btn">
-          <span class="icon">📷</span>
-          <span>Tap to capture</span>
+          <span class="icon">📷</span><span>Tap to capture</span>
           <input type="file" class="capture-input" data-type="after" accept="image/*,video/*" capture="environment" multiple>
         </label>
         <div class="media-preview" id="media-preview-after"></div>
@@ -120,19 +171,19 @@
     </div>
 
     <div class="card">
-      <div class="card-title" style="margin-bottom:14px">Driver's Signature <span class="required">*</span></div>
-      <div style="border: 2px dashed var(--border); border-radius: 8px; background: #fff;">
-        <canvas id="driver-signature-pad" style="width: 100%; height: 150px; touch-action: none;"></canvas>
+      <div class="card-title" style="margin-bottom:12px">Driver's Signature <span class="required">*</span></div>
+      <div style="border:2px dashed var(--border);border-radius:8px;background:#fff">
+        <canvas id="driver-signature-pad" style="width:100%;height:140px;touch-action:none"></canvas>
       </div>
-      <button type="button" class="btn btn-sm btn-outline" id="clear-driver-sig" style="margin-top: 10px;">Clear Signature</button>
+      <button type="button" class="btn btn-sm btn-outline" id="clear-driver-sig" style="margin-top:10px">Clear Signature</button>
     </div>
 
     <div class="card">
-      <div class="card-title" style="margin-bottom:14px">Client Signature <span class="required">*</span></div>
-      <div style="border: 2px dashed var(--border); border-radius: 8px; background: #fff;">
-        <canvas id="client-signature-pad" style="width: 100%; height: 150px; touch-action: none;"></canvas>
+      <div class="card-title" style="margin-bottom:12px">Client Signature <span class="required">*</span></div>
+      <div style="border:2px dashed var(--border);border-radius:8px;background:#fff">
+        <canvas id="client-signature-pad" style="width:100%;height:140px;touch-action:none"></canvas>
       </div>
-      <button type="button" class="btn btn-sm btn-outline" id="clear-client-sig" style="margin-top: 10px;">Clear Signature</button>
+      <button type="button" class="btn btn-sm btn-outline" id="clear-client-sig" style="margin-top:10px">Clear Signature</button>
     </div>
 
     <div class="card">
@@ -145,7 +196,7 @@
   </form>
 </main>
 
-<div style="position:fixed;bottom:0;left:0;right:0;padding:12px 16px;background:linear-gradient(transparent,rgba(240,244,248,.98) 40%);z-index:88;">
+<div style="position:fixed;bottom:0;left:0;right:0;padding:10px 14px;background:linear-gradient(transparent,rgba(240,244,248,.98) 40%);z-index:88">
   <button type="submit" form="form-inspection" class="btn btn-amber btn-full" id="btn-submit" style="padding:14px;font-size:1rem;box-shadow:0 4px 16px rgba(245,158,11,.4)">
     Submit Inspection
   </button>

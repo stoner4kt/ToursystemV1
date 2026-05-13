@@ -4,42 +4,174 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="theme-color" content="#0f2744">
-  <title>TransRoute — Driver Dashboard</title>
+  <title>CCSHUTTLES — Driver</title>
   <link rel="manifest" href="manifest.json">
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
+
 <div id="offline-banner">📵 You are offline — changes will sync when reconnected</div>
+
+<!-- ── SIDEBAR OVERLAY ──────────────────────────────────────── -->
+<div class="sidebar-overlay" id="sidebar-overlay"></div>
+
+<!-- ── SIDEBAR ─────────────────────────────────────────────── -->
+<nav id="app-sidebar">
+  <div class="sidebar-header">
+    <div class="sidebar-brand">CC<span>SHUTTLES</span></div>
+    <button class="sidebar-close" id="sidebar-close" aria-label="Close menu">✕</button>
+  </div>
+  <div class="sidebar-user">
+    <div class="sidebar-user-name" id="sidebar-driver-name">Driver</div>
+    <div class="sidebar-user-role">Driver Portal</div>
+  </div>
+  <div class="sidebar-nav">
+    <div class="sidebar-nav-item">
+      <button class="sidebar-nav-link active" data-tab="tasks" onclick="switchDriverTab('tasks')">
+        <span class="sidebar-nav-icon">✅</span> My Tasks
+      </button>
+    </div>
+    <div class="sidebar-nav-item">
+      <a href="inspection.html" class="sidebar-nav-link">
+        <span class="sidebar-nav-icon">🔍</span> Inspection Sheet
+      </a>
+    </div>
+    <div class="sidebar-nav-item">
+      <button class="sidebar-nav-link" data-tab="recon" onclick="switchDriverTab('recon')">
+        <span class="sidebar-nav-icon">📊</span> Recon Sheet
+      </button>
+    </div>
+  </div>
+  <div class="sidebar-footer">
+    <button class="sidebar-logout" id="btn-signout">
+      <span class="sidebar-nav-icon">⏻</span> Sign Out
+    </button>
+  </div>
+</nav>
+
+<!-- ── HEADER ─────────────────────────────────────────────── -->
 <header class="app-header">
-  <div class="logo">Trans<span>Route</span>&nbsp;<span style="font-weight:400;font-size:.8rem;opacity:.6">Driver</span></div>
+  <div style="display:flex;align-items:center;gap:10px">
+    <button class="btn-icon" id="sidebar-toggle" aria-label="Open menu">
+      <div class="hamburger-icon"><span></span><span></span><span></span></div>
+    </button>
+    <div class="logo">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" stroke-width="2.2">
+        <rect x="1" y="3" width="15" height="13" rx="2"/><path d="M16 8h4l3 5v3h-7V8z"/>
+        <circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/>
+      </svg>
+      CC<span>SHUTTLES</span>
+    </div>
+  </div>
   <div class="header-actions">
-    <span id="driver-name" style="color:rgba(255,255,255,.75)"></span>
-    <button class="btn-icon" id="btn-signout" title="Sign out">⏻</button>
+    <span class="header-user" id="driver-name-header"></span>
   </div>
 </header>
+
+<!-- ── TAB NAV ──────────────────────────────────────────────── -->
 <nav class="tab-nav">
-  <button class="tab-btn active" data-tab="recon">📊 Weekly Recon</button>
+  <button class="tab-btn active" data-tab="tasks" id="tab-btn-tasks">✅ My Tasks</button>
+  <button class="tab-btn" data-tab="recon" id="tab-btn-recon">📊 Recon Sheet</button>
 </nav>
+
+<!-- ── MAIN ──────────────────────────────────────────────────── -->
 <main class="main">
-  <div class="tab-panel active" id="tab-recon">
+
+  <!-- ═══ TASKS TAB ═══ -->
+  <div class="tab-panel active" id="tab-tasks">
+
+    <div class="stats-row">
+      <div class="stat-card"><div class="stat-value" id="task-stat-upcoming" style="color:var(--amber)">—</div><div class="stat-label">Upcoming</div></div>
+      <div class="stat-card"><div class="stat-value" id="task-stat-active" style="color:var(--green)">—</div><div class="stat-label">Active Now</div></div>
+      <div class="stat-card"><div class="stat-value" id="task-stat-completed" style="color:var(--navy-mid)">—</div><div class="stat-label">Completed</div></div>
+      <div class="stat-card"><div class="stat-value" id="task-stat-total">—</div><div class="stat-label">Total</div></div>
+    </div>
+
     <div class="card">
-      <div class="card-header"><div><div class="card-title">Weekly Recon Sheet</div><div class="card-subtitle">Fill all cost lines and submit to admin review</div></div></div>
+      <div class="card-header">
+        <div>
+          <div class="card-title">Active Trips</div>
+          <div class="card-subtitle">Currently in progress</div>
+        </div>
+        <a href="inspection.html" class="btn btn-amber btn-sm">+ Inspection</a>
+      </div>
+      <div id="tasks-active-list">
+        <div class="empty-state"><div class="empty-icon">🚌</div><p>No active trips right now.</p></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title">Upcoming Trips</div>
+      </div>
+      <div id="tasks-upcoming-list">
+        <div class="spinner"></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title">Recent Completed</div>
+      </div>
+      <div id="tasks-completed-list">
+        <div class="spinner"></div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ═══ RECON TAB ═══ -->
+  <div class="tab-panel" id="tab-recon">
+    <div class="card">
+      <div class="card-header">
+        <div>
+          <div class="card-title">Weekly Recon Sheet</div>
+          <div class="card-subtitle">Fill all cost lines and submit for admin review</div>
+        </div>
+      </div>
       <form id="form-recon">
-        <div class="form-row"><div class="form-group"><label>Driver Name</label><input id="recon-driver-name" class="form-control" readonly></div><div class="form-group"><label>Tour Reference</label><input id="recon-tour-reference" class="form-control" required></div></div>
-        <div class="form-row"><div class="form-group"><label>Tour Vehicle</label><input id="recon-tour-vehicle" class="form-control"></div><div class="form-group"><label>Vehicle Reg</label><input id="recon-vehicle-reg" class="form-control"></div></div>
-        <div class="form-row"><div class="form-group"><label>Start KM</label><input type="number" id="recon-start-km" class="form-control"></div><div class="form-group"><label>End KM</label><input type="number" id="recon-end-km" class="form-control"></div></div>
-        <div class="form-group"><label>Slip lines (Date / ODO / KM Driven / Litres / Total Cost / Notes)</label><textarea id="recon-lines" class="form-control" rows="6" placeholder="2026-05-12 | 125000 | 320 | 45 | 900.00 | Fuel"></textarea></div>
-        <div class="form-row"><div class="form-group"><label>Trip Budget</label><input id="recon-trip-budget" class="form-control"></div><div class="form-group"><label>Trip Cost</label><input id="recon-trip-cost" class="form-control"></div></div>
-        <div class="form-row"><div class="form-group"><label>Driver Food</label><input id="recon-driver-food" class="form-control"></div><div class="form-group"><label>Flights To</label><input id="recon-flights-to" class="form-control"></div></div>
-        <div class="form-row"><div class="form-group"><label>Flights From</label><input id="recon-flights-from" class="form-control"></div><div class="form-group"><label>Driver Rate</label><input id="recon-driver-rate" class="form-control"></div></div>
-        <div class="form-row"><div class="form-group"><label>Accommodation</label><input id="recon-accommodation" class="form-control"></div><div class="form-group"><label>Total Profit/Loss</label><input id="recon-profit-loss" class="form-control"></div></div>
+        <div class="form-row">
+          <div class="form-group"><label>Driver Name</label><input id="recon-driver-name" class="form-control" readonly></div>
+          <div class="form-group"><label>Tour Reference</label><input id="recon-tour-reference" class="form-control" required></div>
+        </div>
+        <div class="form-row">
+          <div class="form-group"><label>Tour Vehicle</label><input id="recon-tour-vehicle" class="form-control"></div>
+          <div class="form-group"><label>Vehicle Reg</label><input id="recon-vehicle-reg" class="form-control"></div>
+        </div>
+        <div class="form-row">
+          <div class="form-group"><label>Start KM</label><input type="number" id="recon-start-km" class="form-control"></div>
+          <div class="form-group"><label>End KM</label><input type="number" id="recon-end-km" class="form-control"></div>
+        </div>
+        <div class="form-group">
+          <label>Slip Lines <span style="font-weight:400;color:var(--text-muted)">(Date / ODO / KM / Litres / Cost / Notes)</span></label>
+          <textarea id="recon-lines" class="form-control" rows="5" placeholder="2026-05-12 | 125000 | 320 | 45 | 900.00 | Fuel"></textarea>
+        </div>
+        <div class="form-row">
+          <div class="form-group"><label>Trip Budget</label><input id="recon-trip-budget" class="form-control"></div>
+          <div class="form-group"><label>Trip Cost</label><input id="recon-trip-cost" class="form-control"></div>
+        </div>
+        <div class="form-row">
+          <div class="form-group"><label>Driver Food</label><input id="recon-driver-food" class="form-control"></div>
+          <div class="form-group"><label>Flights To</label><input id="recon-flights-to" class="form-control"></div>
+        </div>
+        <div class="form-row">
+          <div class="form-group"><label>Flights From</label><input id="recon-flights-from" class="form-control"></div>
+          <div class="form-group"><label>Driver Rate</label><input id="recon-driver-rate" class="form-control"></div>
+        </div>
+        <div class="form-row">
+          <div class="form-group"><label>Accommodation</label><input id="recon-accommodation" class="form-control"></div>
+          <div class="form-group"><label>Total Profit/Loss</label><input id="recon-profit-loss" class="form-control"></div>
+        </div>
         <div class="form-group"><label>Director Sign Off</label><input id="recon-director-signoff" class="form-control" placeholder="Office use only"></div>
-        <button type="submit" class="btn btn-amber btn-full">Submit Recon Sheet</button>
+        <button type="submit" class="btn btn-amber btn-full" style="padding:13px;font-size:1rem">Submit Recon Sheet</button>
       </form>
     </div>
   </div>
+
 </main>
+
 <div id="toast-container"></div>
+
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <script src="config.js"></script>
 <script src="app.js"></script>
