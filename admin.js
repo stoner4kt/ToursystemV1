@@ -13,6 +13,7 @@ document.querySelectorAll('.tab-btn').forEach((btn) => {
     if (target === 'calendar') renderCalendar();
     if (target === 'fleet') { loadFleet(); }
     if (target === 'drivers') loadDriversTab();
+    if (target === 'recon') loadReconReview();
     if (target === 'reports')  loadReports();
   });
 });
@@ -445,6 +446,124 @@ async function loadReports() {
   }).join('');
 }
 
+// ────────────────────────────────────────────────────────────
+//  RECON REVIEW
+// ────────────────────────────────────────────────────────────
+async function loadReconReview() {
+  const container = document.getElementById('recon-list');
+  if (!container) return;
+  container.innerHTML = '<div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div>';
+
+  const { data, error } = await sb.from('recon_sheets')
+    .select('*, profiles(name, driver_id)')
+    .order('week_start', { ascending: false });
+
+  if (error) {
+    container.innerHTML = `<p style="color:var(--red)">Error loading recon sheets: ${error.message}</p>`;
+    return;
+  }
+  if (!data?.length) {
+    container.innerHTML = '<div class="empty-state"><div class="empty-icon">📊</div><p>No recon sheets submitted yet.</p></div>';
+    return;
+  }
+
+  container.innerHTML = data.map((sheet) => `
+    <div class="inspection-item" onclick="openReconDetail('${sheet.id}')">
+      <div>
+        <div class="inspection-title">${sheet.profiles?.name || sheet.driver_id} · ${sheet.week_start} → ${sheet.week_end}</div>
+        <div class="inspection-meta">
+          Trips: ${sheet.trips_completed ?? 0} · Distance: ${sheet.total_distance_km ?? 0} km ·
+          Fatigue: ${sheet.fatigue_level ?? 'n/a'} · Stress: ${sheet.stress_level ?? 'n/a'}
+        </div>
+        <div class="inspection-fault-count">Status: ${statusBadge(sheet.status || 'submitted')}</div>
+      </div>
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-sm btn-outline" onclick="event.stopPropagation();openReconDetail('${sheet.id}')">View</button>
+        <button class="btn btn-sm btn-amber" onclick="event.stopPropagation();downloadReconPDF('${sheet.id}')">PDF</button>
+      </div>
+    </div>
+  `).join('');
+}
+
+async function openReconDetail(id) {
+  const { data: sheet, error } = await sb.from('recon_sheets')
+    .select('*, profiles(name, driver_id)')
+    .eq('id', id)
+    .single();
+  if (error || !sheet) {
+    toast(error?.message || 'Recon sheet not found', 'error');
+    return;
+  }
+
+  document.getElementById('recon-detail-id').value = id;
+  document.getElementById('recon-detail-body').innerHTML = `
+    <div class="form-row" style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+      <div><strong>Driver</strong><p>${sheet.profiles?.name || 'Unknown'} (${sheet.profiles?.driver_id || sheet.driver_id})</p></div>
+      <div><strong>Week</strong><p>${formatDate(sheet.week_start)} → ${formatDate(sheet.week_end)}</p></div>
+      <div><strong>Trips Completed</strong><p>${sheet.trips_completed ?? 0}</p></div>
+      <div><strong>Total Distance</strong><p>${sheet.total_distance_km ?? 0} km</p></div>
+      <div><strong>Total Hours</strong><p>${sheet.total_hours ?? 0}</p></div>
+      <div><strong>Status</strong><p>${statusBadge(sheet.status || 'submitted')}</p></div>
+    </div>
+    <hr style="margin:12px 0;border-color:var(--border)">
+    <p><strong>Vehicle Issues:</strong> ${sheet.vehicle_issues || '—'}</p>
+    <p><strong>Maintenance Needed:</strong> ${sheet.maintenance_needed || '—'}</p>
+    <p><strong>Accidents / Incidents:</strong> ${sheet.accidents_incidents || '—'}</p>
+    <p><strong>Traffic Violations:</strong> ${sheet.traffic_violations || '—'}</p>
+    <p><strong>Safety Concerns:</strong> ${sheet.safety_concerns || '—'}</p>
+    <p><strong>Fuel Consumption:</strong> ${sheet.fuel_consumption || '—'}</p>
+    <p><strong>Tires Condition:</strong> ${sheet.tires_condition || '—'}</p>
+    <p><strong>Fatigue Level:</strong> ${sheet.fatigue_level ?? '—'} / 10</p>
+    <p><strong>Stress Level:</strong> ${sheet.stress_level ?? '—'} / 10</p>
+    <p><strong>Health Issues:</strong> ${sheet.health_issues || '—'}</p>
+    <p><strong>Driver Notes:</strong> ${sheet.driver_notes || '—'}</p>
+    <p><strong>Admin Review Notes:</strong> ${sheet.admin_review_notes || '—'}</p>
+    <div style="margin-top:16px"><button class="btn btn-amber btn-full" onclick="downloadReconPDF('${sheet.id}')">⬇ Download PDF</button></div>
+  `;
+  openModal('modal-recon-detail');
+}
+
+async function downloadReconPDF(id) {
+  const { data: sheet, error } = await sb.from('recon_sheets')
+    .select('*, profiles(name, driver_id)')
+    .eq('id', id)
+    .single();
+  if (error || !sheet) {
+    toast(error?.message || 'Recon sheet not found', 'error');
+    return;
+  }
+  toast('Generating recon PDF…', 'info', 4000);
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ unit: 'mm', format: 'a4' });
+  const W = doc.internal.pageSize.getWidth();
+  let y = 14;
+  doc.setFillColor(15, 39, 68); doc.rect(0, 0, W, 24, 'F');
+  doc.setTextColor(255, 255, 255); doc.setFontSize(16); doc.text(`${CONFIG.APP_NAME} Recon Sheet`, 14, 12);
+  doc.setFontSize(9); doc.text(CONFIG.COMPANY_NAME, 14, 18);
+  y = 32; doc.setTextColor(20, 20, 20); doc.setFontSize(10);
+  const lines = [
+    ['Driver', `${sheet.profiles?.name || 'Unknown'} (${sheet.profiles?.driver_id || sheet.driver_id})`],
+    ['Week', `${sheet.week_start} to ${sheet.week_end}`],
+    ['Trips Completed', String(sheet.trips_completed ?? 0)],
+    ['Total Distance (km)', String(sheet.total_distance_km ?? 0)],
+    ['Total Hours', String(sheet.total_hours ?? 0)],
+    ['Fatigue / Stress', `${sheet.fatigue_level ?? '—'} / ${sheet.stress_level ?? '—'}`],
+    ['Safety Incidents', sheet.accidents_incidents || '—'],
+    ['Traffic Violations', sheet.traffic_violations || '—'],
+    ['Health Concerns', sheet.health_issues || '—'],
+    ['Driver Notes', sheet.driver_notes || '—'],
+  ];
+  lines.forEach(([label, value]) => {
+    doc.setFont('helvetica', 'bold'); doc.text(`${label}:`, 14, y);
+    doc.setFont('helvetica', 'normal');
+    const wrapped = doc.splitTextToSize(String(value), 130);
+    doc.text(wrapped, 62, y);
+    y += Math.max(6, wrapped.length * 5);
+  });
+  doc.save(`TransRoute_Recon_${sheet.profiles?.driver_id || sheet.driver_id}_${sheet.week_start}.pdf`);
+  toast('Recon PDF downloaded', 'success');
+}
+
 async function openReportDetail(id) {
   const { data: insp } = await sb.from('inspections')
     .select('*, profiles(name, driver_id), vehicles(model, make)')
@@ -667,4 +786,4 @@ async function deleteDriver(driverId){ if(!confirm('Delete this driver?')) retur
 document.getElementById('btn-add-driver')?.addEventListener('click',()=>{ document.getElementById('form-driver').reset(); document.getElementById('driver-id').value=''; document.getElementById('modal-driver-title').textContent='Add Driver'; openModal('modal-driver');});
 document.getElementById('form-driver')?.addEventListener('submit', async (e)=>{ e.preventDefault(); const id=document.getElementById('driver-id').value; const payload={name:document.getElementById('driver-name-input').value.trim(), driver_id:document.getElementById('driver-code-input').value.trim(), phone:document.getElementById('driver-phone-input').value.trim()||null, is_active:document.getElementById('driver-active-input').value==='true', role:'driver'}; const {error}= id? await sb.from('profiles').update(payload).eq('id',id): await sb.from('profiles').insert(payload); if(error){toast(error.message,'error');return;} closeModal('modal-driver'); toast('Driver saved','success'); loadDriversTab();});
 
-function startAdminTour(){ const tour = new Shepherd.Tour({ useModalOverlay: true, defaultStepOptions: { cancelIcon: { enabled: true }, classes: 'shepherd-theme-custom', scrollTo: { behavior: 'smooth', block: 'center' } } }); tour.addStep({id:'welcome',text:'Welcome to TransRoute Admin! Let me show you around.',buttons:[{text:'Skip',action:tour.cancel},{text:'Start Tour',action:tour.next}]}); ['calendar','fleet','drivers','reports'].forEach((id,idx)=>tour.addStep({id,text:id==='calendar'?'Manage bookings and view your schedule here.':id==='fleet'?'Monitor your fleet vehicles and service schedules.':id==='drivers'?'Manage drivers and view their active and upcoming trips.':'Review inspection reports and download PDFs.',attachTo:{element:`[data-tab="${id}"]`,on:'bottom'},buttons:[{text:'Back',action:tour.back},{text:idx===3?'Finish':'Next',action:idx===3?tour.complete:tour.next}]})); tour.on('complete',()=>localStorage.setItem('transroute-admin-tour-seen','true')); tour.start(); }
+function startAdminTour(){ const tour = new Shepherd.Tour({ useModalOverlay: true, defaultStepOptions: { cancelIcon: { enabled: true }, classes: 'shepherd-theme-custom', scrollTo: { behavior: 'smooth', block: 'center' } } }); tour.addStep({id:'welcome',text:'Welcome to TransRoute Admin! Let me show you around.',buttons:[{text:'Skip',action:tour.cancel},{text:'Start Tour',action:tour.next}]}); ['calendar','fleet','drivers','recon','reports'].forEach((id,idx)=>tour.addStep({id,text:id==='calendar'?'Manage bookings and view your schedule here.':id==='fleet'?'Monitor your fleet vehicles and service schedules.':id==='drivers'?'Manage drivers and view their active and upcoming trips.':id==='recon'?'Review driver weekly recon submissions and wellness reporting.':'Review inspection reports and download PDFs.',attachTo:{element:`[data-tab="${id}"]`,on:'bottom'},buttons:[{text:'Back',action:tour.back},{text:idx===4?'Finish':'Next',action:idx===4?tour.complete:tour.next}]})); tour.on('complete',()=>localStorage.setItem('transroute-admin-tour-seen','true')); tour.start(); }
