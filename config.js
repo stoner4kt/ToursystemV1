@@ -15,9 +15,9 @@ const CONFIG = {
   CLOUDINARY_UPLOAD_PRESET: 'YOUR_UNSIGNED_UPLOAD_PRESET',
 
   // ── App Branding ─────────────────────────────────────────
-  APP_NAME: 'TransRoute',
-  COMPANY_NAME: 'Your Company Name (Pty) Ltd',
-  ADMIN_EMAIL: 'admin@yourcompany.com',
+  APP_NAME: 'CCSHUTTLES',
+  COMPANY_NAME: 'CCSHUTTLES (Pty) Ltd',
+  ADMIN_EMAIL: 'info@ccshuttles.co.za',
 
   // ── Fault Alert Edge Function ────────────────────────────
   // https://app.supabase.com → Edge Functions → fault-alert → URL
