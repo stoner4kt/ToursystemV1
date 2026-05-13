@@ -5,7 +5,7 @@
 
 -- 1. PROFILES (extends Supabase auth.users)
 CREATE TABLE IF NOT EXISTS public.profiles (
-  id          UUID        REFERENCES auth.users(id) ON DELETE CASCADE PRIMARY KEY,
+  id          UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
   driver_id   TEXT        UNIQUE NOT NULL,
   name        TEXT        NOT NULL,
   phone       TEXT,
