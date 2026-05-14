@@ -11,8 +11,8 @@ const CONFIG = {
 
   // ── Cloudinary ───────────────────────────────────────────
   // https://cloudinary.com/console
-  CLOUDINARY_CLOUD_NAME: 'YOUR_CLOUD_NAME',
-  CLOUDINARY_UPLOAD_PRESET: 'YOUR_UNSIGNED_UPLOAD_PRESET',
+  CLOUDINARY_CLOUD_NAME: 'dzf97vyjs',
+  CLOUDINARY_UPLOAD_PRESET: 'transroute_uploads',
 
   // ── App Branding ─────────────────────────────────────────
   APP_NAME: 'CCSHUTTLES',
@@ -21,7 +21,7 @@ const CONFIG = {
 
   // ── Fault Alert Edge Function ────────────────────────────
   // https://app.supabase.com → Edge Functions → fault-alert → URL
-  FAULT_ALERT_FUNCTION_URL: 'https://YOUR_PROJECT_ID.supabase.co/functions/v1/fault-alert',
+  FAULT_ALERT_FUNCTION_URL: 'https://jxsesdcwdjrxydkvhpsh.supabase.co/functions/v1/fault-alert',
 
   // ── Cloudflare Workers Webhooks (security + logging) ─────────────
   // Receives booking write events for downstream compliance logging.
