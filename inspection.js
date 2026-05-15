@@ -130,6 +130,46 @@ async function loadVehicleOptions() {
   });
 }
 
+
+async function triggerFaultAlert({ vehicleReg, driverId, faults, inspectionId }) {
+  try {
+    const { data, error } = await sb.functions.invoke('fault-alert', {
+      body: {
+        vehicle_reg: vehicleReg,
+        driver_id: driverId,
+        faults,
+        inspection_id: inspectionId ?? null
+      }
+    });
+
+    if (error) {
+      console.error('[fault-alert] invoke returned error');
+      console.error('[fault-alert] message:', error.message);
+      console.error('[fault-alert] name:', error.name);
+      console.error('[fault-alert] status:', error.status ?? 'n/a');
+      console.error('[fault-alert] context:', error.context ?? 'n/a');
+      return;
+    }
+
+    console.log('[fault-alert] success response:', data);
+
+    if (Array.isArray(data?.recipients)) {
+      data.recipients.forEach((r, idx) => {
+        console.log(
+          `[fault-alert] recipient #${idx + 1}: phone=${r.phone}, ok=${r.ok}, status=${r.status}`,
+          r.response
+        );
+      });
+    }
+  } catch (err) {
+    console.error('[fault-alert] request failed before edge function completed');
+    console.error('[fault-alert] raw error object:', err);
+    console.error('[fault-alert] diagnostic message:', err?.message ?? 'Unknown error');
+    console.error('[fault-alert] diagnostic status:', err?.status ?? err?.context?.status ?? 'n/a');
+    console.error('[fault-alert] diagnostic code:', err?.code ?? 'n/a');
+  }
+}
+
 // ── Form Submission ───────────────────────────────────────────
 document.getElementById('form-inspection')?.addEventListener('submit', async (e) => {
   e.preventDefault();
@@ -174,10 +214,17 @@ document.getElementById('form-inspection')?.addEventListener('submit', async (e)
     return;
   }
 
-  const { error } = await sb.from('inspections').insert(payload).select().single();
+  const { data: insertedInspection, error } = await sb.from('inspections').insert(payload).select().single();
   if (error) { toast('Error: ' + error.message, 'error'); submitBtn.disabled = false; return; }
 
   if (hasCriticalFault) {
+    await triggerFaultAlert({
+      vehicleReg,
+      driverId: currentProfile.driver_id,
+      faults,
+      inspectionId: insertedInspection?.id ?? null
+    });
+
     const waMsg = encodeURIComponent(`🚨 FAULT ALERT: ${vehicleReg} has ${faults.length} faults. Reported by ${currentProfile.name}.`);
     document.getElementById('wa-alert-link').href = `https://wa.me/${CONFIG.ADMIN_PHONE}?text=${waMsg}`;
     document.getElementById('wa-alert-section').style.display = 'block';
