@@ -60,27 +60,29 @@ serve(async (req: Request) => {
       });
     }
 
-    // ── Build WhatsApp Message ────────────────────────────────
-    const faultList = (faults as string[])
-      .slice(0, 5) // Limit to 5 faults to keep message short
-      .map((f: string, i: number) => `${i + 1}. ${f}`)
-      .join('%0A'); // URL-encoded newline
+// ── Build WhatsApp Message ────────────────────────────────
+// Use standard newlines (\n) here
+const faultList = (faults as string[])
+  .slice(0, 5)
+  .map((f: string, i: number) => `${i + 1}. ${f}`)
+  .join('\n'); 
 
-    const timestamp = new Date().toLocaleString('en-ZA', {
-      timeZone: 'Africa/Johannesburg',
-      day: '2-digit', month: 'short', year: 'numeric',
-      hour: '2-digit', minute: '2-digit',
-    });
+const timestamp = new Date().toLocaleString('en-ZA', {
+  timeZone: 'Africa/Johannesburg',
+  day: '2-digit', month: 'short', year: 'numeric',
+  hour: '2-digit', minute: '2-digit',
+});
 
-    const message = encodeURIComponent(
-      `🚨 CRITICAL FAULT ALERT — TransRoute\n` +
-      `Vehicle: ${vehicle_reg}\n` +
-      `Driver ID: ${driver_id}\n` +
-      `Time: ${timestamp}\n\n` +
-      `Faults reported:\n${decodeURIComponent(faultList)}\n\n` +
-      `Inspection ID: ${inspection_id ?? 'N/A'}\n` +
-      `Action required: Vehicle must be inspected before next trip.`
-    );
+// Encode the whole block exactly once
+const message = encodeURIComponent(
+  `🚨 *CRITICAL FAULT ALERT — TransRoute*\n\n` +
+  `*Vehicle:* ${vehicle_reg}\n` +
+  `*Driver ID:* ${driver_id}\n` +
+  `*Time:* ${timestamp}\n\n` +
+  `*Faults reported:*\n${faultList}\n\n` +
+  `*Inspection ID:* ${inspection_id ?? 'N/A'}\n\n` +
+  `_Action required: Vehicle must be inspected before next trip._`
+);
 
     // ── Send via CallMeBot (single or multi-admin recipients) ─
     const recipientsRaw = Deno.env.get('CALLMEBOT_RECIPIENTS') ?? '';
