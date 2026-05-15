@@ -75,7 +75,7 @@ const timestamp = new Date().toLocaleString('en-ZA', {
 
 // Encode the whole block exactly once
 const message = encodeURIComponent(
-  `🚨 *CRITICAL FAULT ALERT — TransRoute*\n\n` +
+  `🚨 *CRITICAL FAULT ALERT — CCSHUTTLES*\n\n` +
   `*Vehicle:* ${vehicle_reg}\n` +
   `*Driver ID:* ${driver_id}\n` +
   `*Time:* ${timestamp}\n\n` +
