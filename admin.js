@@ -427,9 +427,7 @@ document.getElementById('form-driver')?.addEventListener('submit', async (e) => 
     }).eq('id', id));
   } else {
     const email = document.getElementById('driver-email-input').value.trim().toLowerCase();
-    ({ error } = await sb.functions.invoke('driver-invite', {
-      body: { email, fullName: name },
-    }));
+    ({ error } = await inviteDriver(email, name));
   }
 
   submitBtn.disabled = false; submitBtn.textContent = 'Save Driver';
@@ -438,6 +436,30 @@ document.getElementById('form-driver')?.addEventListener('submit', async (e) => 
   closeModal('modal-driver');
   loadManageDrivers();
 });
+
+async function inviteDriver(email, fullName) {
+  const { data, error } = await sb.functions.invoke('driver-invite', {
+    body: { email, fullName },
+  });
+
+  if (error) return { error: new Error(await getFunctionErrorMessage(error)) };
+  if (data?.error) return { error: new Error(data.error) };
+  return { data };
+}
+
+async function getFunctionErrorMessage(error) {
+  const fallback = error?.message || 'Unable to send driver invite';
+  const response = error?.context;
+  if (!response || typeof response.clone !== 'function') return fallback;
+
+  try {
+    const body = await response.clone().json();
+    return body?.error || body?.message || fallback;
+  } catch {
+    try { return (await response.clone().text()) || fallback; }
+    catch { return fallback; }
+  }
+}
 
 // ── REPORTS ───────────────────────────────────────────────────
 async function loadReports() {

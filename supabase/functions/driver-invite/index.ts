@@ -6,52 +6,93 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+function json(body: Record<string, unknown>, status = 200) {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+  });
+}
+
+function getSiteUrl(req: Request) {
+  const configured = (Deno.env.get('SITE_URL') ?? '').replace(/\/$/, '');
+  if (configured) return configured;
+
+  const origin = req.headers.get('origin');
+  if (origin) return origin.replace(/\/$/, '');
+
+  const referer = req.headers.get('referer');
+  if (referer) return new URL(referer).origin.replace(/\/$/, '');
+
+  return '';
+}
+
 serve(async (req: Request) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
+  if (req.method !== 'POST') return json({ error: 'Method not allowed' }, 405);
 
   try {
     const authHeader = req.headers.get('Authorization');
-    if (!authHeader) return new Response(JSON.stringify({ error: 'Missing auth header' }), { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    if (!authHeader) return json({ error: 'Missing auth header' }, 401);
 
-    const userClient = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_ANON_KEY') ?? '',
-      { global: { headers: { Authorization: authHeader } } }
-    );
+    const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? '';
+    const anonKey = Deno.env.get('SUPABASE_ANON_KEY') ?? '';
+    const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
+    if (!supabaseUrl || !anonKey || !serviceRoleKey) {
+      return json({ error: 'Driver invite function is missing Supabase environment variables.' }, 500);
+    }
+
+    const userClient = createClient(supabaseUrl, anonKey, {
+      global: { headers: { Authorization: authHeader } },
+    });
 
     const { data: { user }, error: userError } = await userClient.auth.getUser();
-    if (userError || !user) return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    if (userError || !user) return json({ error: 'Unauthorized' }, 401);
 
-    const { data: me } = await userClient.from('profiles').select('role').eq('id', user.id).maybeSingle();
-    if (me?.role !== 'admin') return new Response(JSON.stringify({ error: 'Forbidden' }), { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    const { data: me, error: profileError } = await userClient
+      .from('profiles')
+      .select('id,role')
+      .eq('id', user.id)
+      .maybeSingle();
+
+    const metadataRole = user.app_metadata?.role || user.user_metadata?.role;
+    const configuredAdminEmail = (Deno.env.get('ADMIN_EMAIL') ?? 'info@inyathi.co.za').trim().toLowerCase();
+    const userEmail = String(user.email || '').trim().toLowerCase();
+    const isAdmin = me?.role === 'admin' || metadataRole === 'admin' || Boolean(configuredAdminEmail && userEmail === configuredAdminEmail);
+
+    if (profileError && !isAdmin) return json({ error: `Unable to verify admin role (${profileError.message}).` }, 403);
+    if (!isAdmin) return json({ error: 'Forbidden: admin account required.' }, 403);
 
     const { email, fullName } = await req.json();
     const normalizedEmail = String(email || '').trim().toLowerCase();
     const normalizedName = String(fullName || '').trim();
-    if (!normalizedEmail || !normalizedName) return new Response(JSON.stringify({ error: 'Name and email are required' }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    if (!normalizedEmail || !normalizedName) return json({ error: 'Name and email are required' }, 400);
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(normalizedEmail)) return json({ error: 'Enter a valid driver email address' }, 400);
 
-    const adminClient = createClient(Deno.env.get('SUPABASE_URL') ?? '', Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '');
+    const adminClient = createClient(supabaseUrl, serviceRoleKey, {
+      auth: { persistSession: false, autoRefreshToken: false },
+    });
 
     const { error: inviteRowError } = await adminClient.from('driver_invites').upsert({
       email: normalizedEmail,
       full_name: normalizedName,
-      invited_by: user.id,
+      invited_by: me?.id ?? null,
       invited_at: new Date().toISOString(),
       used_at: null,
     }, { onConflict: 'email' });
-    if (inviteRowError) throw inviteRowError;
+    if (inviteRowError) return json({ error: inviteRowError.message || 'Unable to save driver invite.' }, 500);
 
-    const siteUrl = (Deno.env.get('SITE_URL') ?? '').replace(/\/$/, '');
+    const siteUrl = getSiteUrl(req);
     const redirectTo = `${siteUrl}/driver-signup.html?email=${encodeURIComponent(normalizedEmail)}`;
 
     const { error: authInviteError } = await adminClient.auth.admin.inviteUserByEmail(normalizedEmail, {
       data: { full_name: normalizedName, role: 'driver' },
       redirectTo,
     });
-    if (authInviteError) throw authInviteError;
+    if (authInviteError) return json({ error: authInviteError.message || 'Unable to send driver invite email.' }, 400);
 
-    return new Response(JSON.stringify({ success: true }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    return json({ success: true, message: 'Driver invite sent.' });
   } catch (error) {
-    return new Response(JSON.stringify({ error: error.message || 'Invite failed' }), { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    const message = error instanceof Error ? error.message : 'Invite failed';
+    return json({ error: message }, 500);
   }
 });
