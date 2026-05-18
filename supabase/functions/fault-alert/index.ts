@@ -74,7 +74,7 @@ serve(async (req: Request) => {
     });
 
     const rawMessage =
-      `🚨 *CRITICAL FAULT ALERT — CCSHUTTLES*\n\n` +
+      `🚨 *CRITICAL FAULT ALERT — INYATHI*\n\n` +
       `*Vehicle:* ${vehicle_reg}\n` +
       `*Driver ID:* ${driver_id ?? 'N/A'}\n` +
       `*Time:* ${timestamp}\n\n` +

@@ -1,5 +1,5 @@
 // ============================================================
-//  CCSHUTTLES PWA — SHARED UTILITIES & AUTH
+//  INYATHI PWA — SHARED UTILITIES & AUTH
 // ============================================================
 
 const { createClient } = supabase;
@@ -171,7 +171,7 @@ async function uploadToCloudinary(file, folder = 'inspections') {
   const formData = new FormData();
   formData.append('file', file);
   formData.append('upload_preset', CONFIG.CLOUDINARY_UPLOAD_PRESET);
-  formData.append('folder', `ccshuttles/${folder}`);
+  formData.append('folder', `inyathi/${folder}`);
   const res = await fetch(`https://api.cloudinary.com/v1_1/${CONFIG.CLOUDINARY_CLOUD_NAME}/auto/upload`, { method: 'POST', body: formData });
   if (!res.ok) throw new Error('Cloudinary upload failed');
   return (await res.json()).secure_url;

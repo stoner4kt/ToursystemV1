@@ -1,5 +1,5 @@
 // ============================================================
-//  CCSHUTTLES PWA — ADMIN DASHBOARD LOGIC
+//  INYATHI PWA — ADMIN DASHBOARD LOGIC
 // ============================================================
 
 // ── AUTH & INIT ───────────────────────────────────────────────
@@ -412,23 +412,29 @@ async function openEditDriver(id) {
 document.getElementById('form-driver')?.addEventListener('submit', async (e) => {
   e.preventDefault();
   const id = document.getElementById('driver-id').value;
-  const payload = {
-    name:      document.getElementById('driver-name-input').value.trim(),
-    phone:     document.getElementById('driver-phone-input').value.trim() || null,
-    is_active: document.getElementById('driver-active-input').value === 'true',
-  };
-  if (!id) {
-    payload.email = document.getElementById('driver-email-input').value.trim().toLowerCase();
-    payload.role  = 'driver';
-  }
+  const name = document.getElementById('driver-name-input').value.trim();
+  const phone = document.getElementById('driver-phone-input').value.trim() || null;
   const submitBtn = e.target.querySelector('[type="submit"]');
-  submitBtn.disabled = true; submitBtn.textContent = 'Saving…';
-  const { error } = id
-    ? await sb.from('profiles').update(payload).eq('id', id)
-    : await sb.from('profiles').insert(payload);
+
+  submitBtn.disabled = true; submitBtn.textContent = id ? 'Saving…' : 'Sending invite…';
+
+  let error = null;
+  if (id) {
+    ({ error } = await sb.from('profiles').update({
+      name,
+      phone,
+      is_active: document.getElementById('driver-active-input').value === 'true',
+    }).eq('id', id));
+  } else {
+    const email = document.getElementById('driver-email-input').value.trim().toLowerCase();
+    ({ error } = await sb.functions.invoke('driver-invite', {
+      body: { email, fullName: name },
+    }));
+  }
+
   submitBtn.disabled = false; submitBtn.textContent = 'Save Driver';
-  if (error) { toast('Error: ' + error.message, 'error'); return; }
-  toast(id ? 'Driver updated' : 'Driver added', 'success');
+  if (error) { toast('Error: ' + (error.message || 'Unable to save driver'), 'error'); return; }
+  toast(id ? 'Driver updated' : 'Driver invite sent', 'success');
   closeModal('modal-driver');
   loadManageDrivers();
 });
@@ -529,7 +535,7 @@ async function downloadReconPDF(id) {
   const W = doc.internal.pageSize.getWidth();
   let y = 14;
   doc.setFillColor(15, 39, 68); doc.rect(0, 0, W, 24, 'F');
-  doc.setTextColor(255, 255, 255); doc.setFontSize(16); doc.text('CCSHUTTLES Recon Sheet', 14, 12);
+  doc.setTextColor(255, 255, 255); doc.setFontSize(16); doc.text('INYATHI Recon Sheet', 14, 12);
   doc.setFontSize(9); doc.text(CONFIG.COMPANY_NAME, 14, 18);
   y = 32; doc.setTextColor(20, 20, 20); doc.setFontSize(10);
   const lines = [
@@ -553,7 +559,7 @@ async function downloadReconPDF(id) {
     doc.text(wrapped, 70, y);
     y += Math.max(6, wrapped.length * 5);
   });
-  doc.save(`CCSHUTTLES_Recon_${sheet.profiles?.driver_id || sheet.driver_id}_${sheet.week_start}.pdf`);
+  doc.save(`INYATHI_Recon_${sheet.profiles?.driver_id || sheet.driver_id}_${sheet.week_start}.pdf`);
   toast('Recon PDF downloaded', 'success');
 }
 
@@ -614,7 +620,7 @@ async function downloadPDF(inspectionId) {
 
   doc.setFillColor(15, 39, 68); doc.rect(0, 0, W, 28, 'F');
   doc.setTextColor(255, 255, 255);
-  doc.setFontSize(18); doc.setFont('helvetica', 'bold'); doc.text('CCSHUTTLES', 14, 13);
+  doc.setFontSize(18); doc.setFont('helvetica', 'bold'); doc.text('INYATHI', 14, 13);
   doc.setFontSize(9); doc.setFont('helvetica', 'normal'); doc.text(CONFIG.COMPANY_NAME, 14, 20);
   doc.setFontSize(9); doc.text('VEHICLE INSPECTION REPORT', W-14, 13, { align: 'right' });
   doc.text(formatDateTime(insp.created_at), W-14, 20, { align: 'right' });
@@ -673,6 +679,6 @@ async function downloadPDF(inspectionId) {
     const wrapped = doc.splitTextToSize(insp.notes, W-28);
     doc.text(wrapped, 14, y);
   }
-  doc.save(`CCSHUTTLES_Inspection_${insp.vehicle_reg}_${insp.created_at?.split('T')[0]}.pdf`);
+  doc.save(`INYATHI_Inspection_${insp.vehicle_reg}_${insp.created_at?.split('T')[0]}.pdf`);
   toast('PDF downloaded', 'success');
 }
