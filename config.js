@@ -15,9 +15,9 @@ const CONFIG = {
   CLOUDINARY_UPLOAD_PRESET: 'transroute_uploads',
 
   // ── App Branding ─────────────────────────────────────────
-  APP_NAME: 'CCSHUTTLES',
-  COMPANY_NAME: 'CCSHUTTLES (Pty) Ltd',
-  ADMIN_EMAIL: 'info@ccshuttles.co.za',
+  APP_NAME: 'INYATHI',
+  COMPANY_NAME: 'INYATHI (Pty) Ltd',
+  ADMIN_EMAIL: 'info@inyathi.co.za',
 
   // ── Fault Alert Edge Function ────────────────────────────
   // https://app.supabase.com → Edge Functions → fault-alert → URL
