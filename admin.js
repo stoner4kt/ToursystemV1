@@ -132,6 +132,7 @@ function showBookingsForDate(dateStr, cell) {
       <div style="display:flex;gap:6px;align-items:center;flex-shrink:0">
         ${statusBadge(b.status)}
         <button class="btn btn-sm btn-outline" onclick="openEditBooking('${b.id}')">Edit</button>
+        <button class="btn btn-sm btn-danger" onclick="deleteBooking('${b.id}','${b.invoice_no}')">Del</button>
       </div>
     </div>`).join('');
 }
@@ -216,6 +217,14 @@ document.getElementById('form-booking')?.addEventListener('submit', async (e) =>
   closeModal('modal-booking');
   renderCalendar();
 });
+
+async function deleteBooking(id, invoiceNo) {
+  if (!confirm(`Delete booking ${invoiceNo || id}? This cannot be undone.`)) return;
+  const { error } = await sb.from('bookings').delete().eq('id', id);
+  if (error) { toast('Delete failed: ' + error.message, 'error'); return; }
+  toast('Booking deleted', 'success');
+  renderCalendar();
+}
 
 // ── FLEET MANAGEMENT ─────────────────────────────────────────
 async function loadFleet() {
@@ -375,8 +384,18 @@ async function loadManageDrivers() {
       <td>${statusBadge(d.is_active ? 'active' : 'decommissioned')}</td>
       <td>
         <button class="btn btn-sm btn-outline" onclick="openEditDriver('${d.id}')">Edit</button>
+        <button class="btn btn-sm btn-danger" onclick="deleteDriver('${d.id}','${d.name}')">Del</button>
       </td>
     </tr>`).join('');
+}
+
+async function deleteDriver(id, name) {
+  if (!confirm(`Delete driver ${name}? This cannot be undone.`)) return;
+  const { error } = await sb.from('profiles').delete().eq('id', id).eq('role', 'driver');
+  if (error) { toast('Delete failed: ' + error.message, 'error'); return; }
+  toast('Driver deleted', 'success');
+  await loadManageDrivers();
+  await loadBookingDropdowns();
 }
 
 document.getElementById('btn-add-driver')?.addEventListener('click', () => {
