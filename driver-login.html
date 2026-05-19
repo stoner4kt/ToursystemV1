@@ -48,6 +48,7 @@
     const { createClient } = supabase;
     const sb  = createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON_KEY);
     const msg = document.getElementById('msg');
+    const AUTH_TIMEOUT_MS = 15000;
 
     document.getElementById('driver-login-form').addEventListener('submit', async (e) => {
       e.preventDefault();
@@ -55,28 +56,60 @@
       const password = document.getElementById('password').value;
       const btn      = document.getElementById('btn-login');
       if (!email || !password) return show('Please enter email and password.', 'error');
-      btn.disabled = true; btn.textContent = 'Signing in…';
+
+      setLoading(btn, true, 'Signing in…');
+      show('', '');
+
       try {
-        await sb.auth.signOut();
-        const { data, error } = await sb.auth.signInWithPassword({ email, password });
+        const { data, error } = await withTimeout(
+          sb.auth.signInWithPassword({ email, password }),
+          'Login is taking too long. Please check your connection and try again.'
+        );
         if (error) throw error;
+
         const userId = data?.user?.id;
-        const { data: profile, error: pe } = await sb.from('profiles').select('role,is_active').eq('id', userId).single();
+        if (!userId) throw new Error('Login failed: no user session returned.');
+
+        const { data: profile, error: pe } = await withTimeout(
+          sb.from('profiles').select('role,is_active').eq('id', userId).maybeSingle(),
+          'Login succeeded, but profile verification timed out. Please try again.'
+        );
         if (pe) throw pe;
-        if (profile.role !== 'driver') { await sb.auth.signOut(); throw new Error('Access denied: driver account required.'); }
-        if (profile.is_active === false) { await sb.auth.signOut(); throw new Error('Your account is inactive. Contact admin.'); }
-        await sb.from('profiles').update({ last_login: new Date().toISOString() }).eq('id', userId);
+        if (!profile) throw new Error('Driver profile not found. Please contact admin.');
+        if (profile.role !== 'driver') { await signOutLocalOnly(); throw new Error('Access denied: driver account required.'); }
+        if (profile.is_active === false) { await signOutLocalOnly(); throw new Error('Your account is inactive. Contact admin.'); }
+
+        sb.from('profiles').update({ last_login: new Date().toISOString() }).eq('id', userId)
+          .then(({ error }) => { if (error) console.warn('Unable to update last login:', error); })
+          .catch((err) => console.warn('Unable to update last login:', err));
         show('Login successful. Redirecting…', 'success');
-        setTimeout(() => { window.location.href = 'driver-dashboard.html'; }, 800);
+        window.location.assign('driver-dashboard.html');
       } catch (err) {
-        show(err.message || 'Login failed. Please check your details.', 'error');
-        btn.disabled = false; btn.textContent = 'Sign In';
+        show(err?.message || 'Login failed. Please check your details.', 'error');
+        setLoading(btn, false);
       }
     });
 
+    async function signOutLocalOnly() {
+      try { await sb.auth.signOut({ scope: 'local' }); } catch (err) { console.warn('Local sign out failed:', err); }
+    }
+
+    function withTimeout(promise, timeoutMessage) {
+      let timeoutId;
+      const timeout = new Promise((_, reject) => {
+        timeoutId = setTimeout(() => reject(new Error(timeoutMessage)), AUTH_TIMEOUT_MS);
+      });
+      return Promise.race([promise, timeout]).finally(() => clearTimeout(timeoutId));
+    }
+
+    function setLoading(btn, isLoading, text = 'Sign In') {
+      btn.disabled = isLoading;
+      btn.textContent = text;
+    }
+
     function show(text, type) {
       msg.textContent = text;
-      msg.className   = `login-msg ${type}`;
+      msg.className = text ? `login-msg ${type}` : 'login-msg';
     }
   </script>
 </body>

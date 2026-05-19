@@ -1,6 +1,7 @@
 const { createClient } = supabase;
 const sb = createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON_KEY);
 
+const AUTH_TIMEOUT_MS = 15000;
 const form         = document.getElementById('admin-login-form');
 const emailInput   = document.getElementById('email');
 const passwordInput = document.getElementById('password');
@@ -11,45 +12,64 @@ form.addEventListener('submit', onLoginSubmit);
 
 async function onLoginSubmit(event) {
   event.preventDefault();
-  const email    = emailInput.value.trim();
+  const email    = emailInput.value.trim().toLowerCase();
   const password = passwordInput.value;
   if (!email || !password) return showMessage('Please enter both email and password.', 'error');
 
-  loginButton.disabled = true;
-  loginButton.textContent = 'Signing in…';
+  setLoading(true, 'Signing in…');
   showMessage('', '');
 
   try {
-    await sb.auth.signOut();
-    const { data, error } = await sb.auth.signInWithPassword({ email, password });
-    if (error) return showMessage(error.message || 'Login failed. Please check your credentials.', 'error');
+    const { data, error } = await withTimeout(
+      sb.auth.signInWithPassword({ email, password }),
+      'Login is taking too long. Please check your connection and try again.'
+    );
+    if (error) throw error;
 
     const userId = data?.user?.id;
-    if (!userId) return showMessage('Login failed: no user session returned.', 'error');
+    if (!userId) throw new Error('Login failed: no user session returned.');
 
-    const { data: profile, error: profileError } = await sb.from('profiles').select('role').eq('id', userId).maybeSingle();
+    const { data: profile, error: profileError } = await withTimeout(
+      sb.from('profiles').select('role').eq('id', userId).maybeSingle(),
+      'Login succeeded, but role verification timed out. Please try again.'
+    );
 
     const metadataRole = data?.user?.app_metadata?.role || data?.user?.user_metadata?.role;
-    const isConfiguredAdminEmail = Boolean(CONFIG.ADMIN_EMAIL) && email.toLowerCase() === String(CONFIG.ADMIN_EMAIL).toLowerCase();
+    const isConfiguredAdminEmail = Boolean(CONFIG.ADMIN_EMAIL) && email === String(CONFIG.ADMIN_EMAIL).toLowerCase();
     const isAdmin = profile?.role === 'admin' || metadataRole === 'admin' || isConfiguredAdminEmail;
 
     if (profileError && !isAdmin) {
-      await sb.auth.signOut();
-      return showMessage(`Unable to verify admin role (${profileError.message}).`, 'error');
+      await signOutLocalOnly();
+      throw new Error(`Unable to verify admin role (${profileError.message}).`);
     }
     if (!isAdmin) {
-      await sb.auth.signOut();
-      return showMessage('Access denied: this account is not an admin.', 'error');
+      await signOutLocalOnly();
+      throw new Error('Access denied: this account is not an admin.');
     }
 
     showMessage('Login successful. Redirecting…', 'success');
-    setTimeout(() => { window.location.href = 'index.html'; }, 800);
+    window.location.assign('index.html');
   } catch (err) {
     showMessage(err?.message || 'Unexpected error during login.', 'error');
-  } finally {
-    loginButton.disabled = false;
-    loginButton.textContent = 'Sign In';
+    setLoading(false);
   }
+}
+
+async function signOutLocalOnly() {
+  try { await sb.auth.signOut({ scope: 'local' }); } catch (err) { console.warn('Local sign out failed:', err); }
+}
+
+function withTimeout(promise, timeoutMessage) {
+  let timeoutId;
+  const timeout = new Promise((_, reject) => {
+    timeoutId = setTimeout(() => reject(new Error(timeoutMessage)), AUTH_TIMEOUT_MS);
+  });
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timeoutId));
+}
+
+function setLoading(isLoading, text = 'Sign In') {
+  loginButton.disabled = isLoading;
+  loginButton.textContent = text;
 }
 
 function showMessage(text, type) {
