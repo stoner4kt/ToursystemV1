@@ -520,3 +520,12 @@ Open `config.js` and set:
 - Added Drivers dashboard in admin for active/upcoming trips and CRUD driver management.
 - Added in-app photo annotation tools for inspections (arrow/circle/text).
 - Added onboarding product tours for admin and inspection apps.
+
+## 2026 Booking/Checklist/Incident Upgrade Notes
+- Bookings now use `tour_reference`, `payment_status`, and lock on completion.
+- Vehicles include a `color` hex for calendar display.
+- Inspections support `pdf_urls` (Cloudinary raw uploads).
+- New tables: `incident_reports`, `vehicle_checklists` with RLS for driver ownership.
+- New admin tabs: Incident Reports, Wages Reconciliation, Vehicle Checklists.
+- New driver tabs: Vehicle Checklists, Incident Reports, My Documents.
+

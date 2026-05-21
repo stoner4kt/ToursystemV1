@@ -37,6 +37,9 @@ function switchTab(target) {
   if (target === 'fleet')    loadFleet();
   if (target === 'drivers')  loadDriversTab();
   if (target === 'recon')    loadReconReview();
+  if (target === 'incidents') loadIncidentReports();
+  if (target === 'wages') loadWagesReconciliation();
+  if (target === 'checklists') loadVehicleChecklists();
   if (target === 'reports')  loadReports();
 }
 
@@ -126,13 +129,12 @@ function showBookingsForDate(dateStr, cell) {
     <div class="booking-item">
       <div class="booking-dot" style="background:${b.status==='confirmed'?'var(--green)':b.status==='cancelled'?'var(--red)':'var(--amber)'}"></div>
       <div class="booking-info">
-        <div class="booking-route">${b.client_name} — ${b.route || 'Route TBC'}</div>
+        <div class="booking-route">${b.client_name} — ${b.tour_reference || b.route || 'Tour Ref TBC'}</div>
         <div class="booking-meta">${b.invoice_no} · ${b.assigned_driver_id || 'Unassigned'} · ${b.assigned_vehicle_reg || 'No vehicle'}</div>
       </div>
       <div style="display:flex;gap:6px;align-items:center;flex-shrink:0">
         ${statusBadge(b.status)}
         <button class="btn btn-sm btn-outline" onclick="openEditBooking('${b.id}')">Edit</button>
-        <button class="btn btn-sm btn-danger" onclick="deleteBooking('${b.id}','${b.invoice_no}')">Del</button>
       </div>
     </div>`).join('');
 }
@@ -156,17 +158,24 @@ document.getElementById('btn-add-booking')?.addEventListener('click', () => {
   openModal('modal-booking');
 });
 
+
+function getBookingNotesInput() {
+  return document.getElementById('booking-notes');
+}
+
 function resetBookingForm() {
   document.getElementById('booking-id').value          = '';
   document.getElementById('booking-invoice').value     = `INV-${Date.now().toString().slice(-6)}`;
   document.getElementById('booking-client').value      = '';
-  document.getElementById('booking-route').value       = '';
+  document.getElementById('booking-tour-reference').value       = '';
   document.getElementById('booking-start-date').value  = '';
   document.getElementById('booking-end-date').value    = '';
   document.getElementById('booking-driver').value      = '';
   document.getElementById('booking-vehicle').value     = '';
-  document.getElementById('booking-status').value      = 'pending';
-  document.getElementById('booking-notes').value       = '';
+  document.getElementById('booking-status').value      = 'invoiced';
+  document.getElementById('booking-payment-status').value = 'unpaid';
+  const notesInput = getBookingNotesInput();
+  if (notesInput) notesInput.value = '';
 }
 
 async function openEditBooking(id) {
@@ -175,13 +184,16 @@ async function openEditBooking(id) {
   document.getElementById('booking-id').value         = data.id;
   document.getElementById('booking-invoice').value    = data.invoice_no;
   document.getElementById('booking-client').value     = data.client_name;
-  document.getElementById('booking-route').value      = data.route || '';
+  document.getElementById('booking-tour-reference').value      = data.tour_reference || data.route || '';
+  document.getElementById('booking-payment-status').value = data.payment_status || 'unpaid';
+  toggleBookingLockState(data);
   document.getElementById('booking-start-date').value = data.start_date;
   document.getElementById('booking-end-date').value   = data.end_date;
   document.getElementById('booking-driver').value     = data.assigned_driver_id || '';
   document.getElementById('booking-vehicle').value    = data.assigned_vehicle_reg || '';
   document.getElementById('booking-status').value     = data.status;
-  document.getElementById('booking-notes').value      = data.notes || '';
+  const notesInput = getBookingNotesInput();
+  if (notesInput) notesInput.value = data.notes || '';
   document.getElementById('modal-booking-title').textContent = 'Edit Booking';
   openModal('modal-booking');
 }
@@ -189,16 +201,26 @@ async function openEditBooking(id) {
 document.getElementById('form-booking')?.addEventListener('submit', async (e) => {
   e.preventDefault();
   const id = document.getElementById('booking-id').value;
+  const vehicle = document.getElementById('booking-vehicle').value;
+  const start = document.getElementById('booking-start-date').value;
+  const end = document.getElementById('booking-end-date').value;
+  const availability = await validateVehicleAvailability(vehicle, start, end, id || null);
+  if (!availability.ok) {
+    toast(availability.message, 'error');
+    return;
+  }
+
   const payload = {
     invoice_no:           document.getElementById('booking-invoice').value.trim(),
     client_name:          document.getElementById('booking-client').value.trim(),
-    route:                document.getElementById('booking-route').value.trim(),
+    tour_reference:       document.getElementById('booking-tour-reference').value.trim(),
+    payment_status:       document.getElementById('booking-payment-status').value,
     start_date:           document.getElementById('booking-start-date').value,
     end_date:             document.getElementById('booking-end-date').value,
     assigned_driver_id:   document.getElementById('booking-driver').value  || null,
     assigned_vehicle_reg: document.getElementById('booking-vehicle').value || null,
     status:               document.getElementById('booking-status').value,
-    notes:                document.getElementById('booking-notes').value.trim(),
+    notes:                (getBookingNotesInput()?.value || '').trim(),
   };
   const submitBtn = e.target.querySelector('[type="submit"]');
   submitBtn.disabled = true; submitBtn.textContent = 'Saving…';
@@ -218,12 +240,8 @@ document.getElementById('form-booking')?.addEventListener('submit', async (e) =>
   renderCalendar();
 });
 
-async function deleteBooking(id, invoiceNo) {
-  if (!confirm(`Delete booking ${invoiceNo || id}? This cannot be undone.`)) return;
-  const { error } = await sb.from('bookings').delete().eq('id', id);
-  if (error) { toast('Delete failed: ' + error.message, 'error'); return; }
-  toast('Booking deleted', 'success');
-  renderCalendar();
+async function deleteBooking() {
+  toast('Bookings cannot be deleted (audit trail requirement).', 'warning');
 }
 
 // ── FLEET MANAGEMENT ─────────────────────────────────────────
@@ -723,3 +741,27 @@ async function downloadPDF(inspectionId) {
   doc.save(`INYATHI_Inspection_${insp.vehicle_reg}_${insp.created_at?.split('T')[0]}.pdf`);
   toast('PDF downloaded', 'success');
 }
+
+
+async function validateVehicleAvailability(vehicleReg,startDate,endDate,excludeBookingId=null){
+  if(!vehicleReg||!startDate||!endDate) return {ok:true};
+  let q=sb.from('bookings').select('id,invoice_no,start_date,end_date,status').eq('assigned_vehicle_reg',vehicleReg).neq('status','cancelled').lte('start_date',endDate).gte('end_date',startDate);
+  if(excludeBookingId) q=q.neq('id',excludeBookingId);
+  const {data,error}=await q; if(error) return {ok:false,message:error.message};
+  if((data||[]).length) return {ok:false,message:`Vehicle already booked (${data[0].invoice_no}) for overlapping dates.`};
+  return {ok:true};
+}
+async function validateBookingCompletion(bookingId){
+ const {data,error}=await sb.from('bookings').select('payment_status,pre_trip_inspection_id,post_trip_inspection_id').eq('id',bookingId).single();
+ if(error) return {ok:false,message:error.message};
+ if(data.payment_status!=='paid') return {ok:false,message:'Payment status must be paid.'};
+ if(!data.pre_trip_inspection_id) return {ok:false,message:'Pre-trip inspection required.'};
+ if(!data.post_trip_inspection_id) return {ok:false,message:'Post-trip inspection required.'};
+ return {ok:true};
+}
+function toggleBookingLockState(data){const locked=!!data?.is_locked;document.querySelectorAll('#form-booking input,#form-booking select,#form-booking textarea, #form-booking button[type="submit"]').forEach(el=>{if(el.id!=='btn-mark-complete')el.disabled=locked});document.getElementById('booking-lock-notice').style.display=locked?'block':'none';document.getElementById('btn-mark-complete').style.display=locked?'none':'inline-block';}
+async function completeBooking(bookingId){ if(currentProfile?.role!=='admin') return toast('Only admins can complete bookings','error'); const v=await validateBookingCompletion(bookingId); if(!v.ok) return toast(v.message,'warning'); const {error}=await sb.from('bookings').update({status:'completed',is_locked:true,completed_by:currentProfile.id,completed_at:new Date().toISOString()}).eq('id',bookingId); if(error) return toast(error.message,'error'); toast('Booking completed and locked','success'); closeModal('modal-booking'); await renderCalendar(); }
+document.getElementById('btn-mark-complete')?.addEventListener('click',()=>{const id=document.getElementById('booking-id').value;if(id)completeBooking(id);});
+async function loadIncidentReports(){const {data,error}=await sb.from('incident_reports').select('*').order('created_at',{ascending:false}).limit(100);document.getElementById('incident-list').innerHTML=error?error.message:(data||[]).map(i=>`<div class="inspection-item"><div class="inspection-title">${i.incident_type}</div><div class="inspection-meta">${i.driver_id} · ${i.vehicle_reg} · ${i.status}</div></div>`).join('')||'No incidents';}
+async function loadWagesReconciliation(){const {data,error}=await sb.from('recon_sheets').select('*').order('created_at',{ascending:false}).limit(100);document.getElementById('wages-list').innerHTML=error?error.message:(data||[]).map(r=>`<div class="inspection-item"><div class="inspection-title">${r.driver_id} · ${r.tour_reference||'—'}</div><div class="inspection-meta">${r.week_start} → ${r.week_end} · Rate: ${r.driver_rate||'—'}</div></div>`).join('')||'No wages records';}
+async function loadVehicleChecklists(){const {data,error}=await sb.from('vehicle_checklists').select('*').order('checklist_date',{ascending:false}).limit(100);document.getElementById('checklist-list').innerHTML=error?error.message:(data||[]).map(c=>`<div class="inspection-item"><div class="inspection-title">${c.vehicle_reg} · ${c.checklist_date}</div><div class="inspection-meta">${c.driver_id} · ${c.status}</div></div>`).join('')||'No checklists';}

@@ -22,11 +22,14 @@
 
   const hash = location.hash;
   if (hash === '#recon') switchDriverTab('recon');
+  else if (hash === '#checklists') switchDriverTab('checklists');
+  else if (hash === '#incidents') switchDriverTab('incidents');
+  else if (hash === '#documents') switchDriverTab('documents');
   else switchDriverTab('tasks');
 })();
 
 // ── TAB NAVIGATION ───────────────────────────────────────────
-function switchDriverTab(target) {
+async function switchDriverTab(target) {
   document.querySelectorAll('.tab-btn').forEach((b) => b.classList.remove('active'));
   document.querySelectorAll('.tab-panel').forEach((p) => p.classList.remove('active'));
 
@@ -35,6 +38,9 @@ function switchDriverTab(target) {
 
   document.querySelectorAll('#app-sidebar .sidebar-nav-link[data-tab]').forEach((l) => l.classList.remove('active'));
   document.querySelector(`#app-sidebar .sidebar-nav-link[data-tab="${target}"]`)?.classList.add('active');
+  if(target==='checklists') await loadDriverChecklists();
+  if(target==='incidents') await loadDriverIncidents();
+  if(target==='documents') await loadMyDocuments();
 }
 
 document.querySelectorAll('.tab-btn').forEach((btn) => {
@@ -105,7 +111,7 @@ function renderTaskList(containerId, bookings, emptyMsg) {
           <div class="task-title">${b.client_name}</div>
           ${statusBadge(b.status)}
         </div>
-        <div class="task-meta">${b.route || 'Route TBC'} · ${b.assigned_vehicle_reg || 'Vehicle TBC'}</div>
+        <div class="task-meta">${b.tour_reference || b.route || 'Tour Ref TBC'} · ${b.assigned_vehicle_reg || 'Vehicle TBC'}</div>
         <div class="task-dates">
           📅 ${formatDate(b.start_date)} → ${formatDate(b.end_date)}
           · Ref: ${b.invoice_no}
@@ -174,3 +180,11 @@ document.getElementById('form-recon')?.addEventListener('submit', async (e) => {
     btn.disabled = false; btn.textContent = 'Submit Recon Sheet';
   }
 });
+
+
+async function uploadPdfToCloudinary(pdfFile){if(!pdfFile) return null; const fd=new FormData(); fd.append('file',pdfFile); fd.append('upload_preset',CONFIG.CLOUDINARY_UPLOAD_PRESET); fd.append('folder','transroute/driver'); fd.append('resource_type','raw'); const r=await fetch(`https://api.cloudinary.com/v1_1/${CONFIG.CLOUDINARY_CLOUD_NAME}/upload`,{method:'POST',body:fd}); const j=await r.json(); if(!r.ok) throw new Error(j.error?.message||'Upload failed'); return j.secure_url;}
+async function loadDriverChecklists(){document.getElementById('checklist-date').value=new Date().toISOString().split('T')[0]; document.getElementById('checklist-items').innerHTML=['exterior','interior','mechanical','fluids','tires','brakes','lights','safety_gear'].map(k=>`<label>${k}<select id="chk-${k}" class="form-control"><option>OK</option><option>Needs Attention</option><option>N/A</option></select></label>`).join(''); const {data:v}=await sb.from('bookings').select('assigned_vehicle_reg').eq('assigned_driver_id',currentProfile.driver_id); const regs=[...new Set((v||[]).map(x=>x.assigned_vehicle_reg).filter(Boolean))]; document.getElementById('checklist-vehicle').innerHTML=regs.map(r=>`<option>${r}</option>`).join(''); const {data}=await sb.from('vehicle_checklists').select('*').eq('driver_id',currentProfile.driver_id).order('checklist_date',{ascending:false}); document.getElementById('checklist-history').innerHTML=(data||[]).map(c=>`<div>${c.checklist_date} · ${c.vehicle_reg} · ${c.status}</div>`).join('');}
+document.getElementById('checklist-form')?.addEventListener('submit', async (e)=>{e.preventDefault(); const pdf=document.getElementById('checklist-pdf-input').files[0]; const pdf_url=await uploadPdfToCloudinary(pdf); const payload={vehicle_reg:document.getElementById('checklist-vehicle').value,driver_id:currentProfile.driver_id,checklist_date:document.getElementById('checklist-date').value,exterior:document.getElementById('chk-exterior').value,interior:document.getElementById('chk-interior').value,mechanical:document.getElementById('chk-mechanical').value,fluids:document.getElementById('chk-fluids').value,tires:document.getElementById('chk-tires').value,brakes:document.getElementById('chk-brakes').value,lights:document.getElementById('chk-lights').value,safety_gear:document.getElementById('chk-safety_gear').value,notes:document.getElementById('checklist-notes').value||null,pdf_url,status:'completed'}; const {error}=await sb.from('vehicle_checklists').insert(payload); if(error) return toast(error.message,'error'); toast('Checklist submitted','success'); await loadDriverChecklists();});
+async function loadDriverIncidents(){const {data:b}=await sb.from('bookings').select('id,invoice_no').eq('assigned_driver_id',currentProfile.driver_id).order('start_date',{ascending:false}); document.getElementById('incident-booking').innerHTML=(b||[]).map(x=>`<option value="${x.id}">${x.invoice_no}</option>`).join(''); const {data}=await sb.from('incident_reports').select('*').eq('driver_id',currentProfile.driver_id).order('created_at',{ascending:false}); document.getElementById('incident-history').innerHTML=(data||[]).map(i=>`<div>${i.incident_type} · ${i.status}</div>`).join('');}
+document.getElementById('incident-form')?.addEventListener('submit', async (e)=>{e.preventDefault(); const pdf=await uploadPdfToCloudinary(document.getElementById('incident-pdf').files[0]); const payload={booking_id:document.getElementById('incident-booking').value,driver_id:currentProfile.driver_id,vehicle_reg:null,incident_type:document.getElementById('incident-type').value||'other',description:document.getElementById('incident-description').value,location:document.getElementById('incident-location').value||null,injuries:document.getElementById('incident-injuries').checked,pdf_url:pdf,status:'reported'}; const {error}=await sb.from('incident_reports').insert(payload); if(error) return toast(error.message,'error'); toast('Incident submitted','success'); await loadDriverIncidents();});
+async function loadMyDocuments(){const [i,c,n,r]=await Promise.all([sb.from('inspections').select('id,created_at,pdf_urls').eq('driver_id',currentProfile.driver_id),sb.from('vehicle_checklists').select('id,checklist_date,pdf_url').eq('driver_id',currentProfile.driver_id),sb.from('incident_reports').select('id,incident_date,pdf_url').eq('driver_id',currentProfile.driver_id),sb.from('recon_sheets').select('id,week_start,week_end').eq('driver_id',currentProfile.driver_id)]); const docs=[]; (i.data||[]).forEach(x=>(x.pdf_urls||[]).forEach(u=>docs.push(`<li>Inspection (${x.created_at}) <a href="${u}" target="_blank">PDF</a></li>`))); (c.data||[]).forEach(x=>docs.push(`<li>Checklist ${x.checklist_date} ${x.pdf_url?`<a href="${x.pdf_url}" target="_blank">PDF</a>`:''}</li>`)); (n.data||[]).forEach(x=>docs.push(`<li>Incident ${x.incident_date} ${x.pdf_url?`<a href="${x.pdf_url}" target="_blank">PDF</a>`:''}</li>`)); (r.data||[]).forEach(x=>docs.push(`<li>Recon ${x.week_start} - ${x.week_end}</li>`)); document.getElementById('my-documents-list').innerHTML=`<ul>${docs.join('')}</ul>`;}
