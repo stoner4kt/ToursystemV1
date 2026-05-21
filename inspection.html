@@ -187,6 +187,15 @@
     </div>
 
     <div class="card">
+      <div class="form-group">
+        <label for="inspection-pdf-input">Attach Inspection Report (PDF)</label>
+        <input type="file" accept=".pdf" id="inspection-pdf-input" class="form-control" multiple>
+        <div id="pdf-preview"></div>
+      </div>
+      <div id="inspection-pdfs"></div>
+    </div>
+
+    <div class="card">
       <div class="form-group" style="margin-bottom:0">
         <label for="notes-input">Additional Notes</label>
         <textarea id="notes-input" class="form-control" placeholder="Additional observations..." rows="3"></textarea>

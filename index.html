@@ -88,6 +88,9 @@
   <button class="tab-btn" data-tab="fleet">🚌 Fleet</button>
   <button class="tab-btn" data-tab="drivers">👥 Drivers</button>
   <button class="tab-btn" data-tab="recon">📊 Recon</button>
+  <button class="tab-btn" data-tab="incidents">🚨 Incident Reports</button>
+  <button class="tab-btn" data-tab="wages">💷 Wages Reconciliation</button>
+  <button class="tab-btn" data-tab="checklists">🛠 Vehicle Checklists</button>
   <button class="tab-btn" data-tab="reports">📋 Reports</button>
 </nav>
 
@@ -194,6 +197,11 @@
     </div>
   </div>
 
+
+  <div class="tab-panel" id="tab-incidents"><div class="card"><div class="card-title">Incident Reports</div><div id="incident-list"></div></div></div>
+  <div class="tab-panel" id="tab-wages"><div class="card"><div class="card-title">Wages Reconciliation</div><div id="wages-list"></div></div></div>
+  <div class="tab-panel" id="tab-checklists"><div class="card"><div class="card-title">Vehicle Checklists</div><div id="checklist-list"></div></div></div>
+
 </main>
 
 <!-- ═══ MODALS ═══ -->
@@ -231,7 +239,7 @@
         <div class="form-group"><label>Client Name <span class="required">*</span></label><input type="text" id="booking-client" class="form-control" required></div>
       </div>
       <div class="form-row">
-        <div class="form-group"><label>Route</label><input type="text" id="booking-route" class="form-control" placeholder="e.g. Cape Town → George"></div>
+        <div class="form-group"><label>Tour Reference</label><input type="text" id="booking-tour-reference" class="form-control" placeholder="e.g. Cape Town → George"></div>
         <div class="form-group"><label>Start Date <span class="required">*</span></label><input type="date" id="booking-start-date" class="form-control" required></div>
       </div>
       <div class="form-row">
@@ -242,15 +250,17 @@
       <div class="form-group">
         <label>Status</label>
         <select id="booking-status" class="form-control">
-          <option value="pending">Pending</option>
-          <option value="confirmed">Confirmed</option>
           <option value="invoiced">Invoiced</option>
+          <option value="confirmed">Confirmed</option>
+          <option value="active">Active</option>
+          <option value="in-transit">In-Transit</option>
           <option value="completed">Completed</option>
           <option value="cancelled">Cancelled</option>
         </select>
       </div>
-      <div class="form-group"><label>Notes</label><textarea id="booking-notes" class="form-control" rows="2"></textarea></div>
-      <button type="submit" class="btn btn-amber btn-full">Save Booking</button>
+      <div class="form-group"><label>Payment Status</label><select id="booking-payment-status" class="form-control"><option value="unpaid">Unpaid</option><option value="partially_paid">Partially Paid</option><option value="paid">Paid</option></select></div>
+      <div id="booking-lock-notice" style="display:none;color:var(--red);font-weight:700">🔒 Booking is locked after completion.</div>
+      <div style="display:flex;gap:8px"><button type="submit" class="btn btn-amber btn-full">Save Booking</button><button type="button" id="btn-mark-complete" class="btn btn-outline">Mark as Complete</button></div>
     </form>
   </div>
 </div>
@@ -277,6 +287,7 @@
         <div class="form-group"><label>Current Mileage (km)</label><input type="number" id="vehicle-mileage" class="form-control" min="0" placeholder="85000"></div>
       </div>
       <div class="form-group"><label>Next Service Due (km)</label><input type="number" id="vehicle-service-km" class="form-control" min="0" placeholder="90000"></div>
+      <div class="form-group"><label>Vehicle Color</label><input type="color" id="vehicle-color" class="form-control" value="#3498db"></div>
       <div class="form-group"><label>Notes</label><textarea id="vehicle-notes" class="form-control" rows="2"></textarea></div>
       <button type="submit" class="btn btn-amber btn-full">Save Vehicle</button>
     </form>
