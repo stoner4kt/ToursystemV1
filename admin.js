@@ -135,7 +135,6 @@ function showBookingsForDate(dateStr, cell) {
       <div style="display:flex;gap:6px;align-items:center;flex-shrink:0">
         ${statusBadge(b.status)}
         <button class="btn btn-sm btn-outline" onclick="openEditBooking('${b.id}')">Edit</button>
-        <button class="btn btn-sm btn-danger" onclick="deleteBooking('${b.id}','${b.invoice_no}')">Del</button>
       </div>
     </div>`).join('');
 }
@@ -159,6 +158,11 @@ document.getElementById('btn-add-booking')?.addEventListener('click', () => {
   openModal('modal-booking');
 });
 
+
+function getBookingNotesInput() {
+  return document.getElementById('booking-notes');
+}
+
 function resetBookingForm() {
   document.getElementById('booking-id').value          = '';
   document.getElementById('booking-invoice').value     = `INV-${Date.now().toString().slice(-6)}`;
@@ -170,7 +174,8 @@ function resetBookingForm() {
   document.getElementById('booking-vehicle').value     = '';
   document.getElementById('booking-status').value      = 'invoiced';
   document.getElementById('booking-payment-status').value = 'unpaid';
-  document.getElementById('booking-notes').value       = '';
+  const notesInput = getBookingNotesInput();
+  if (notesInput) notesInput.value = '';
 }
 
 async function openEditBooking(id) {
@@ -187,7 +192,8 @@ async function openEditBooking(id) {
   document.getElementById('booking-driver').value     = data.assigned_driver_id || '';
   document.getElementById('booking-vehicle').value    = data.assigned_vehicle_reg || '';
   document.getElementById('booking-status').value     = data.status;
-  document.getElementById('booking-notes').value      = data.notes || '';
+  const notesInput = getBookingNotesInput();
+  if (notesInput) notesInput.value = data.notes || '';
   document.getElementById('modal-booking-title').textContent = 'Edit Booking';
   openModal('modal-booking');
 }
@@ -195,6 +201,15 @@ async function openEditBooking(id) {
 document.getElementById('form-booking')?.addEventListener('submit', async (e) => {
   e.preventDefault();
   const id = document.getElementById('booking-id').value;
+  const vehicle = document.getElementById('booking-vehicle').value;
+  const start = document.getElementById('booking-start-date').value;
+  const end = document.getElementById('booking-end-date').value;
+  const availability = await validateVehicleAvailability(vehicle, start, end, id || null);
+  if (!availability.ok) {
+    toast(availability.message, 'error');
+    return;
+  }
+
   const payload = {
     invoice_no:           document.getElementById('booking-invoice').value.trim(),
     client_name:          document.getElementById('booking-client').value.trim(),
@@ -205,7 +220,7 @@ document.getElementById('form-booking')?.addEventListener('submit', async (e) =>
     assigned_driver_id:   document.getElementById('booking-driver').value  || null,
     assigned_vehicle_reg: document.getElementById('booking-vehicle').value || null,
     status:               document.getElementById('booking-status').value,
-    notes:                document.getElementById('booking-notes').value.trim(),
+    notes:                (getBookingNotesInput()?.value || '').trim(),
   };
   const submitBtn = e.target.querySelector('[type="submit"]');
   submitBtn.disabled = true; submitBtn.textContent = 'Saving…';
@@ -225,12 +240,8 @@ document.getElementById('form-booking')?.addEventListener('submit', async (e) =>
   renderCalendar();
 });
 
-async function deleteBooking(id, invoiceNo) {
-  if (!confirm(`Delete booking ${invoiceNo || id}? This cannot be undone.`)) return;
-  const { error } = await sb.from('bookings').delete().eq('id', id);
-  if (error) { toast('Delete failed: ' + error.message, 'error'); return; }
-  toast('Booking deleted', 'success');
-  renderCalendar();
+async function deleteBooking() {
+  toast('Bookings cannot be deleted (audit trail requirement).', 'warning');
 }
 
 // ── FLEET MANAGEMENT ─────────────────────────────────────────
@@ -751,9 +762,6 @@ async function validateBookingCompletion(bookingId){
 function toggleBookingLockState(data){const locked=!!data?.is_locked;document.querySelectorAll('#form-booking input,#form-booking select,#form-booking textarea, #form-booking button[type="submit"]').forEach(el=>{if(el.id!=='btn-mark-complete')el.disabled=locked});document.getElementById('booking-lock-notice').style.display=locked?'block':'none';document.getElementById('btn-mark-complete').style.display=locked?'none':'inline-block';}
 async function completeBooking(bookingId){ if(currentProfile?.role!=='admin') return toast('Only admins can complete bookings','error'); const v=await validateBookingCompletion(bookingId); if(!v.ok) return toast(v.message,'warning'); const {error}=await sb.from('bookings').update({status:'completed',is_locked:true,completed_by:currentProfile.id,completed_at:new Date().toISOString()}).eq('id',bookingId); if(error) return toast(error.message,'error'); toast('Booking completed and locked','success'); closeModal('modal-booking'); await renderCalendar(); }
 document.getElementById('btn-mark-complete')?.addEventListener('click',()=>{const id=document.getElementById('booking-id').value;if(id)completeBooking(id);});
-document.getElementById('form-booking')?.addEventListener('submit', async (e)=>{
- const id=document.getElementById('booking-id').value; const vehicle=document.getElementById('booking-vehicle').value; const start=document.getElementById('booking-start-date').value; const end=document.getElementById('booking-end-date').value; const a=await validateVehicleAvailability(vehicle,start,end,id||null); if(!a.ok){e.preventDefault(); toast(a.message,'error'); return;}
-},{capture:true});
 async function loadIncidentReports(){const {data,error}=await sb.from('incident_reports').select('*').order('created_at',{ascending:false}).limit(100);document.getElementById('incident-list').innerHTML=error?error.message:(data||[]).map(i=>`<div class="inspection-item"><div class="inspection-title">${i.incident_type}</div><div class="inspection-meta">${i.driver_id} · ${i.vehicle_reg} · ${i.status}</div></div>`).join('')||'No incidents';}
 async function loadWagesReconciliation(){const {data,error}=await sb.from('recon_sheets').select('*').order('created_at',{ascending:false}).limit(100);document.getElementById('wages-list').innerHTML=error?error.message:(data||[]).map(r=>`<div class="inspection-item"><div class="inspection-title">${r.driver_id} · ${r.tour_reference||'—'}</div><div class="inspection-meta">${r.week_start} → ${r.week_end} · Rate: ${r.driver_rate||'—'}</div></div>`).join('')||'No wages records';}
 async function loadVehicleChecklists(){const {data,error}=await sb.from('vehicle_checklists').select('*').order('checklist_date',{ascending:false}).limit(100);document.getElementById('checklist-list').innerHTML=error?error.message:(data||[]).map(c=>`<div class="inspection-item"><div class="inspection-title">${c.vehicle_reg} · ${c.checklist_date}</div><div class="inspection-meta">${c.driver_id} · ${c.status}</div></div>`).join('')||'No checklists';}

@@ -22,9 +22,9 @@
 
   const hash = location.hash;
   if (hash === '#recon') switchDriverTab('recon');
-  if (hash === '#checklists') switchDriverTab('checklists');
-  if (hash === '#incidents') switchDriverTab('incidents');
-  if (hash === '#documents') switchDriverTab('documents');
+  else if (hash === '#checklists') switchDriverTab('checklists');
+  else if (hash === '#incidents') switchDriverTab('incidents');
+  else if (hash === '#documents') switchDriverTab('documents');
   else switchDriverTab('tasks');
 })();
 
