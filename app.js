@@ -253,8 +253,12 @@ function initSidebar() {
 
   if (!toggleBtn || !sidebar) return;
 
-  function openSidebar()  { sidebar.classList.add('open'); overlay?.classList.add('open'); }
-  function closeSidebar() { sidebar.classList.remove('open'); overlay?.classList.remove('open'); }
+  const storageKey = `${location.pathname}-sidebar-open`;
+  function persistState(isOpen) {
+    try { localStorage.setItem(storageKey, isOpen ? '1' : '0'); } catch (_) {}
+  }
+  function openSidebar()  { sidebar.classList.add('open'); overlay?.classList.add('open'); persistState(true); }
+  function closeSidebar() { sidebar.classList.remove('open'); overlay?.classList.remove('open'); persistState(false); }
 
   toggleBtn.addEventListener('click', openSidebar);
   closeBtn?.addEventListener('click', closeSidebar);
@@ -263,4 +267,21 @@ function initSidebar() {
   sidebar.querySelectorAll('.sidebar-nav-link').forEach((link) => {
     link.addEventListener('click', () => { if (!link.dataset.keepOpen) closeSidebar(); });
   });
+
+  const desktopView = window.matchMedia('(min-width: 1025px)').matches;
+  if (desktopView) openSidebar();
+  else {
+    const remembered = (() => { try { return localStorage.getItem(storageKey) === '1'; } catch (_) { return false; } })();
+    if (remembered) openSidebar();
+  }
 }
+
+document.addEventListener('click', (event) => {
+  const tabButton = event.target.closest('.tab-btn,[data-tab]');
+  if (!tabButton) return;
+  const label = (tabButton.textContent || '').trim().replace(/\s+/g, ' ');
+  const adminCtx = document.getElementById('context-tab-label');
+  const driverCtx = document.getElementById('driver-context-tab-label');
+  if (adminCtx && label) adminCtx.textContent = label;
+  if (driverCtx && label) driverCtx.textContent = label;
+});

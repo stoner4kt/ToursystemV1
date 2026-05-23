@@ -74,6 +74,9 @@
     </div>
   </div>
   <div class="header-actions">
+    <div class="header-search" role="search">
+      <input type="search" class="form-control" placeholder="Search bookings, drivers, vehicles…" aria-label="Search">
+    </div>
     <span data-sync-wrapper style="display:none">
       <span class="sync-count sync-badge">0</span>
     </span>
@@ -81,6 +84,10 @@
     <button class="btn-icon" id="btn-signout" title="Sign out" style="font-size:.95rem">⏻</button>
   </div>
 </header>
+
+<div class="context-bar">
+  <div class="breadcrumbs" aria-label="Breadcrumb"><span>Admin</span><span>Dashboard</span><span id="context-tab-label">Calendar</span></div>
+</div>
 
 <!-- ── TAB NAV ──────────────────────────────────────────────── -->
 <nav class="tab-nav" id="main-tab-nav">
@@ -99,12 +106,12 @@
 
   <!-- ═══ CALENDAR TAB ═══ -->
   <div class="tab-panel active" id="tab-calendar">
-    <div class="stats-row">
+    <section class="hero-metrics stats-row" aria-label="Key metrics">
       <div class="stat-card"><div class="stat-value" id="stat-total">—</div><div class="stat-label">Total Bookings</div></div>
       <div class="stat-card"><div class="stat-value" id="stat-confirmed" style="color:var(--green)">—</div><div class="stat-label">Confirmed</div></div>
       <div class="stat-card"><div class="stat-value" id="stat-pending" style="color:var(--amber)">—</div><div class="stat-label">Pending</div></div>
       <div class="stat-card"><div class="stat-value" id="stat-invoiced" style="color:var(--navy-mid)">—</div><div class="stat-label">Invoiced</div></div>
-    </div>
+    </section>
 
     <div class="card">
       <div class="cal-nav">
