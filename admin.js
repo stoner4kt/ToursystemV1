@@ -15,7 +15,6 @@
 
   initSidebar();
 
-  document.getElementById('btn-signout')?.addEventListener('click', signOut);
   document.getElementById('btn-signout-sidebar')?.addEventListener('click', signOut);
 
   renderCalendar();
