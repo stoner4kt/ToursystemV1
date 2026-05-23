@@ -537,3 +537,70 @@ tbody td { padding: 9px 10px; border-bottom: 1px solid var(--border); vertical-a
 /* ── SHEPHERD TOUR ─────────────────────────────────────────── */
 .shepherd-element { z-index: 9999; }
 .shepherd-modal-overlay-container { z-index: 9998; }
+
+/* ============================================================
+   2026 UI/UX refresh layer (non-breaking overrides)
+   ============================================================ */
+:root {
+  --space-1: 8px; --space-2: 16px; --space-3: 24px; --space-4: 32px;
+  --radius-sm: 12px; --radius-md: 16px; --radius-lg: 20px;
+}
+body { line-height: 1.55; }
+.main { max-width: 960px; padding: 14px; }
+.card { border: 1px solid rgba(15,39,68,.08); border-radius: var(--radius-md); box-shadow: 0 6px 22px rgba(15,39,68,.08); margin-bottom: var(--space-2); }
+.card-title { font-size: 1.04rem; }
+
+.app-header { height: 64px; backdrop-filter: blur(10px); background: linear-gradient(120deg, #0f2744 0%, #17385f 100%); }
+.btn-icon { width: 44px; height: 44px; }
+.context-bar { position: sticky; top: 64px; z-index: 90; background: rgba(255,255,255,.9); border-bottom: 1px solid var(--border); padding: 10px 14px; }
+.breadcrumbs { display: flex; align-items: center; gap: 8px; color: var(--text-muted); font-size: .8rem; }
+.breadcrumbs span:not(:last-child)::after { content: '›'; margin-left: 8px; color: #94a3b8; }
+.breadcrumbs span:last-child { color: var(--navy); font-weight: 700; }
+.header-search { display:none; min-width: 220px; }
+.header-search .form-control { min-height: 40px; border-color: rgba(255,255,255,.35); background: rgba(255,255,255,.13); color: #fff; }
+.header-search .form-control::placeholder { color: rgba(255,255,255,.75); }
+
+.btn, .form-control, .sidebar-nav-link, .tab-btn { min-height: 44px; }
+.form-group { margin-bottom: 18px; }
+.form-group label { margin-bottom: 8px; font-size: .86rem; }
+.form-control { border-radius: 12px; }
+.form-control:focus-visible, .btn:focus-visible, .sidebar-nav-link:focus-visible, .tab-btn:focus-visible { outline: 3px solid rgba(245,158,11,.35); outline-offset: 2px; }
+
+.table-wrapper { border: 1px solid var(--border); border-radius: 12px; overflow: auto; }
+thead th { position: sticky; top: 0; background: #e9eff5; z-index: 2; }
+tr:hover td { background: #f8fafc; }
+
+.modal-overlay { padding: 0; align-items: flex-end; }
+.modal { width: 100%; max-height: 92dvh; border-radius: 20px 20px 0 0; overflow: auto; }
+.modal-header { position: sticky; top: 0; background: #fff; z-index: 2; }
+
+.stats-row { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 12px; margin-bottom: 16px; }
+.stat-card { background: linear-gradient(180deg,#fff,#f8fafc); border: 1px solid var(--border); border-radius: 14px; padding: 16px; }
+.stat-value { font-size: 1.5rem; font-weight: 800; }
+
+.inspection-progress { display:grid; grid-template-columns: 1fr; gap:8px; margin-bottom: 12px; }
+.inspection-progress span { background:#e2e8f0; padding:8px 10px; border-radius:999px; font-size:.78rem; font-weight:700; color:#334155; }
+.inspection-progress .is-active { background: rgba(245,158,11,.2); color:#92400e; }
+
+.skeleton { position:relative; overflow:hidden; background:#e2e8f0; border-radius:10px; min-height:44px; }
+.skeleton::after { content:''; position:absolute; inset:0; transform:translateX(-100%); background:linear-gradient(90deg,transparent,rgba(255,255,255,.65),transparent); animation:shimmer 1.4s infinite; }
+@keyframes shimmer { to { transform:translateX(100%); } }
+
+@media (min-width: 481px) {
+  .main { padding: 18px; }
+  .stats-row { grid-template-columns: repeat(3,minmax(0,1fr)); }
+}
+@media (min-width: 1025px) {
+  body { display:grid; grid-template-columns: 280px 1fr; grid-template-areas: "side head" "side content"; }
+  #app-sidebar { transform: translateX(0); position: sticky; top: 0; height: 100dvh; grid-area: side; }
+  .sidebar-overlay, #sidebar-toggle, .sidebar-close { display:none !important; }
+  .app-header { grid-area: head; top:0; }
+  .context-bar { top:64px; }
+  .main { grid-area: content; max-width: 1200px; padding: 24px; }
+  .header-search { display:block; }
+  .tab-nav { padding: 0 14px; }
+  .tab-btn { min-width: 120px; }
+  .stats-row { grid-template-columns: repeat(4,minmax(0,1fr)); gap:16px; }
+  .modal-overlay { align-items:center; padding: 20px; }
+  .modal { max-width: 680px; border-radius: 16px; }
+}
