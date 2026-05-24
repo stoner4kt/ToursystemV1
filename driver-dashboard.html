@@ -41,6 +41,21 @@
         <span class="sidebar-nav-icon">📊</span> Recon Sheet
       </button>
     </div>
+    <div class="sidebar-nav-item">
+      <button class="sidebar-nav-link" data-tab="checklists" onclick="switchDriverTab('checklists')">
+        <span class="sidebar-nav-icon">🛠</span> Vehicle Checklists
+      </button>
+    </div>
+    <div class="sidebar-nav-item">
+      <button class="sidebar-nav-link" data-tab="incidents" onclick="switchDriverTab('incidents')">
+        <span class="sidebar-nav-icon">🚨</span> Incident Reports
+      </button>
+    </div>
+    <div class="sidebar-nav-item">
+      <button class="sidebar-nav-link" data-tab="documents" onclick="switchDriverTab('documents')">
+        <span class="sidebar-nav-icon">📁</span> My Documents
+      </button>
+    </div>
   </div>
   <div class="sidebar-footer">
     <button class="sidebar-logout" id="btn-signout">
@@ -67,6 +82,10 @@
     <span class="header-user" id="driver-name-header"></span>
   </div>
 </header>
+
+<div class="context-bar">
+  <div class="breadcrumbs" aria-label="Breadcrumb"><span>Driver</span><span>Dashboard</span><span id="driver-context-tab-label">My Tasks</span></div>
+</div>
 
 <!-- ── TAB NAV ──────────────────────────────────────────────── -->
 <nav class="tab-nav">
