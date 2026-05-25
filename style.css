@@ -781,3 +781,17 @@ tbody tr:nth-child(even) { background: rgba(240,244,248,.5); }
   .modal { border-radius: var(--radius-lg); max-width: 500px; transform: scale(.95); box-shadow: 0 20px 60px rgba(0,0,0,.2); }
   .modal-overlay.open .modal { transform: scale(1); }
 }
+
+/* UI simplification: remove duplicate horizontal tab navigation */
+.tab-nav { display: none !important; }
+
+/* Keep content comfortably spaced below header after tab-nav removal */
+.main { padding-top: 20px; }
+
+@media (min-width: 481px) {
+  .main { padding-top: 24px; }
+}
+
+@media (min-width: 1025px) {
+  .main { padding-top: 28px; }
+}
