@@ -66,6 +66,11 @@
         <span class="sidebar-nav-icon">📋</span> Reports
       </button>
     </div>
+    <div class="sidebar-nav-item">
+      <button class="sidebar-nav-link" data-tab="bookings-archive" onclick="switchTab('bookings-archive')">
+        <span class="sidebar-nav-icon">📚</span> Bookings Archive
+      </button>
+    </div>
   </div>
   <div class="sidebar-footer">
     <button class="sidebar-logout" id="btn-signout-sidebar">
@@ -113,6 +118,7 @@
   <button class="tab-btn" data-tab="wages">💷 Wages Reconciliation</button>
   <button class="tab-btn" data-tab="checklists">🛠 Vehicle Checklists</button>
   <button class="tab-btn" data-tab="reports">📋 Reports</button>
+  <button class="tab-btn" data-tab="bookings-archive">📚 Bookings Archive</button>
 </nav>
 
 <!-- ── MAIN ──────────────────────────────────────────────────── -->
@@ -222,6 +228,17 @@
   <div class="tab-panel" id="tab-incidents"><div class="card"><div class="card-title">Incident Reports</div><div id="incident-list"></div></div></div>
   <div class="tab-panel" id="tab-wages"><div class="card"><div class="card-title">Wages Reconciliation</div><div id="wages-list"></div></div></div>
   <div class="tab-panel" id="tab-checklists"><div class="card"><div class="card-title">Vehicle Checklists</div><div id="checklist-list"></div></div></div>
+  <div class="tab-panel" id="tab-bookings-archive">
+    <div class="card">
+      <div class="card-title">Bookings Archive</div>
+      <div class="form-row">
+        <div class="form-group"><label>Status</label><select id="archive-status-filter" class="form-control"><option value="all">All</option><option value="completed">Completed</option><option value="cancelled">Cancelled</option><option value="invoiced">Invoiced</option></select></div>
+        <div class="form-group"><label>From Date</label><input type="date" id="archive-from-date" class="form-control"></div>
+        <div class="form-group"><label>To Date</label><input type="date" id="archive-to-date" class="form-control"></div>
+      </div>
+      <div class="table-wrap"><table><thead><tr><th>Invoice No</th><th>Client</th><th>Driver</th><th>Vehicle</th><th>Start Date</th><th>End Date</th><th>Status</th><th>Documents</th><th>Actions</th></tr></thead><tbody id="bookings-archive-tbody"></tbody></table></div>
+    </div>
+  </div>
 
 </main>
 
@@ -280,6 +297,11 @@
         </select>
       </div>
       <div class="form-group"><label>Payment Status</label><select id="booking-payment-status" class="form-control"><option value="unpaid">Unpaid</option><option value="partially_paid">Partially Paid</option><option value="paid">Paid</option></select></div>
+      <div class="form-group">
+        <label>Booking Documents</label>
+        <input type="file" id="booking-documents-input" class="form-control" accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document" multiple>
+        <div id="booking-documents-list" style="margin-top:8px;font-size:.82rem"></div>
+      </div>
       <div id="booking-lock-notice" style="display:none;color:var(--red);font-weight:700">🔒 Booking is locked after completion.</div>
       <div style="display:flex;gap:8px"><button type="submit" class="btn btn-amber btn-full">Save Booking</button><button type="button" id="btn-mark-complete" class="btn btn-outline">Mark as Complete</button></div>
     </form>

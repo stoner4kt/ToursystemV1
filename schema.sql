@@ -247,3 +247,5 @@ VALUES
   ('CA 789 012', 'Sprinter 316 CDI', 'Mercedes-Benz', 2020, 120000, 125000, 'active'),
   ('GP 345 678', 'Hiace 2.5 D4D', 'Toyota', 2019, 210000, 215000, 'maintenance')
 ON CONFLICT DO NOTHING;
+ALTER TABLE public.bookings
+ADD COLUMN IF NOT EXISTS booking_documents JSONB DEFAULT '[]'::jsonb;

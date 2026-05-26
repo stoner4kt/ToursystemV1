@@ -105,6 +105,8 @@ function renderTaskList(containerId, bookings, emptyMsg) {
   container.innerHTML = bookings.map((b) => {
     const statusClass = `status-${b.status}`;
     const isActive = b.start_date <= new Date().toISOString().split('T')[0] && b.end_date >= new Date().toISOString().split('T')[0];
+    const docs = Array.isArray(b.booking_documents) ? b.booking_documents : [];
+    const canViewDocs = b.assigned_driver_id === currentProfile?.driver_id && docs.length > 0;
     return `
       <div class="task-card ${statusClass}">
         <div class="task-row">
@@ -120,10 +122,17 @@ function renderTaskList(containerId, bookings, emptyMsg) {
           <div style="margin-top:10px">
             <a href="inspection.html" class="btn btn-amber btn-sm">+ Start Inspection</a>
           </div>` : ''}
+        ${canViewDocs ? `<div style="margin-top:8px"><button type="button" class="btn btn-sm btn-outline" onclick="toggleBookingDocuments('${b.id}')">📄 Documents (${docs.length})</button><div id="task-docs-${b.id}" style="display:none;margin-top:6px">${docs.map((d)=>`<div><a href="${d.url}" target="_blank" rel="noopener">${d.filename || 'Document'}</a></div>`).join('')}</div></div>` : ''}
         ${b.notes ? `<div style="font-size:.78rem;color:var(--text-muted);margin-top:6px">📝 ${b.notes}</div>` : ''}
       </div>`;
   }).join('');
 }
+function toggleBookingDocuments(bookingId) {
+  const el = document.getElementById(`task-docs-${bookingId}`);
+  if (!el) return;
+  el.style.display = el.style.display === 'none' ? 'block' : 'none';
+}
+window.toggleBookingDocuments = toggleBookingDocuments;
 
 // ── RECON SUBMISSION ──────────────────────────────────────────
 function getWeekRange(d = new Date()) {
