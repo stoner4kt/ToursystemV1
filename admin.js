@@ -40,6 +40,7 @@ function switchTab(target) {
   if (target === 'wages') loadWagesReconciliation();
   if (target === 'checklists') loadVehicleChecklists();
   if (target === 'reports')  loadReports();
+  if (target === 'bookings-archive')  loadBookingsArchive();
 }
 
 document.querySelectorAll('.tab-btn').forEach((btn) => {
@@ -50,6 +51,8 @@ document.querySelectorAll('.tab-btn').forEach((btn) => {
 let calDate       = new Date();
 let allBookings   = [];
 let driverOptions = [];
+let currentBookingDocuments = [];
+const ALLOWED_DOC_TYPES = ['application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'];
 
 async function loadBookingDropdowns() {
   const { data: drivers } = await sb.from('profiles')
@@ -175,7 +178,30 @@ function resetBookingForm() {
   document.getElementById('booking-payment-status').value = 'unpaid';
   const notesInput = getBookingNotesInput();
   if (notesInput) notesInput.value = '';
+  currentBookingDocuments = [];
+  const docInput = document.getElementById('booking-documents-input');
+  if (docInput) docInput.value = '';
+  renderBookingDocumentsList();
 }
+function renderBookingDocumentsList() {
+  const holder = document.getElementById('booking-documents-list');
+  if (!holder) return;
+  if (!currentBookingDocuments.length) {
+    holder.innerHTML = `<div style="color:var(--text-muted)">No documents attached.</div>`;
+    return;
+  }
+  holder.innerHTML = currentBookingDocuments.map((d, i) => `<div style="display:flex;justify-content:space-between;gap:8px;border-bottom:1px solid var(--border);padding:4px 0">
+    <a href="${d.url || '#'}" target="_blank" rel="noopener">${d.filename || 'Document'}</a>
+    <span style="color:var(--text-muted)">${d.size ? `${Math.round(d.size / 1024)} KB` : '—'} · ${formatDateTime(d.uploaded_at)}</span>
+    <button type="button" class="btn btn-sm btn-danger" onclick="removeBookingDocument(${i})">🗑</button>
+  </div>`).join('');
+}
+function removeBookingDocument(i) {
+  if (currentProfile?.role !== 'admin') return toast('Only admins can remove documents', 'error');
+  currentBookingDocuments.splice(i, 1);
+  renderBookingDocumentsList();
+}
+window.removeBookingDocument = removeBookingDocument;
 
 async function openEditBooking(id) {
   const { data } = await sb.from('bookings').select('*').eq('id', id).single();
@@ -193,6 +219,8 @@ async function openEditBooking(id) {
   document.getElementById('booking-status').value     = data.status;
   const notesInput = getBookingNotesInput();
   if (notesInput) notesInput.value = data.notes || '';
+  currentBookingDocuments = Array.isArray(data.booking_documents) ? data.booking_documents : [];
+  renderBookingDocumentsList();
   document.getElementById('modal-booking-title').textContent = 'Edit Booking';
   openModal('modal-booking');
 }
@@ -221,6 +249,27 @@ document.getElementById('form-booking')?.addEventListener('submit', async (e) =>
     status:               document.getElementById('booking-status').value,
     notes:                (getBookingNotesInput()?.value || '').trim(),
   };
+  const files = Array.from(document.getElementById('booking-documents-input')?.files || []);
+  if (files.length > 5) return toast('Maximum 5 files per booking', 'error');
+  for (const f of files) {
+    if (!ALLOWED_DOC_TYPES.includes(f.type)) return toast(`Unsupported file type: ${f.name}`, 'error');
+    if (f.size > 10 * 1024 * 1024) return toast(`File too large (max 10MB): ${f.name}`, 'error');
+  }
+  if (files.length) {
+    if (currentProfile?.role !== 'admin') return toast('Only admins can upload documents', 'error');
+    toast('Uploading documents…', 'info');
+    try {
+      for (const f of files) {
+        const url = await uploadToCloudinary(f, 'booking-documents');
+        currentBookingDocuments.push({ url, filename: f.name, size: f.size, uploaded_at: new Date().toISOString(), uploaded_by: currentProfile?.id || null });
+      }
+      toast('Documents saved', 'success');
+    } catch (err) {
+      toast(`Document upload failed: ${err.message}`, 'error');
+      return;
+    }
+  }
+  payload.booking_documents = currentBookingDocuments;
   const submitBtn = e.target.querySelector('[type="submit"]');
   submitBtn.disabled = true; submitBtn.textContent = 'Saving…';
 
@@ -238,6 +287,33 @@ document.getElementById('form-booking')?.addEventListener('submit', async (e) =>
   closeModal('modal-booking');
   renderCalendar();
 });
+document.getElementById('archive-status-filter')?.addEventListener('change', loadBookingsArchive);
+document.getElementById('archive-from-date')?.addEventListener('change', loadBookingsArchive);
+document.getElementById('archive-to-date')?.addEventListener('change', loadBookingsArchive);
+async function loadBookingsArchive() {
+  const tbody = document.getElementById('bookings-archive-tbody');
+  if (!tbody) return;
+  tbody.innerHTML = `<tr><td colspan="9"><div class="spinner"></div></td></tr>`;
+  const { data, error } = await sb.from('bookings').select('*').order('start_date', { ascending: false });
+  if (error) { tbody.innerHTML = `<tr><td colspan="9">${error.message}</td></tr>`; return; }
+  const status = document.getElementById('archive-status-filter')?.value || 'all';
+  const from = document.getElementById('archive-from-date')?.value || '';
+  const to = document.getElementById('archive-to-date')?.value || '';
+  let rows = data || [];
+  if (status !== 'all') rows = rows.filter(b => b.status === status);
+  if (from) rows = rows.filter(b => b.start_date >= from);
+  if (to) rows = rows.filter(b => b.end_date <= to);
+  tbody.innerHTML = rows.map((b) => {
+    const docs = Array.isArray(b.booking_documents) ? b.booking_documents : [];
+    return `<tr><td>${b.invoice_no}</td><td>${b.client_name}</td><td>${b.assigned_driver_id || '—'}</td><td>${b.assigned_vehicle_reg || '—'}</td><td>${formatDate(b.start_date)}</td><td>${formatDate(b.end_date)}</td><td>${statusBadge(b.status)}</td><td>${docs.length ? `<span class="badge badge-blue">${docs.length} docs</span>` : '—'}</td><td><button class="btn btn-sm btn-outline" onclick="openEditBooking('${b.id}')">View Details</button> ${docs.length ? `<button class="btn btn-sm btn-amber" onclick="downloadBookingDocuments('${b.id}')">Download Documents</button>` : ''}</td></tr>`;
+  }).join('') || `<tr><td colspan="9">No bookings found.</td></tr>`;
+}
+async function downloadBookingDocuments(bookingId) {
+  const { data } = await sb.from('bookings').select('booking_documents').eq('id', bookingId).single();
+  const docs = Array.isArray(data?.booking_documents) ? data.booking_documents : [];
+  docs.forEach((d) => window.open(d.url, '_blank', 'noopener'));
+}
+window.downloadBookingDocuments = downloadBookingDocuments;
 
 async function deleteBooking() {
   toast('Bookings cannot be deleted (audit trail requirement).', 'warning');
