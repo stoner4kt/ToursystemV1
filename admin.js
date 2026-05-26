@@ -39,6 +39,7 @@ function switchTab(target) {
   if (target === 'incidents') loadIncidentReports();
   if (target === 'wages') loadWagesReconciliation();
   if (target === 'checklists') loadVehicleChecklists();
+  if (target === 'transfer-recon') loadTransferReconReview();
   if (target === 'reports')  loadReports();
   if (target === 'bookings-archive')  loadBookingsArchive();
 }
@@ -838,5 +839,255 @@ function toggleBookingLockState(data){const locked=!!data?.is_locked;document.qu
 async function completeBooking(bookingId){ if(currentProfile?.role!=='admin') return toast('Only admins can complete bookings','error'); const v=await validateBookingCompletion(bookingId); if(!v.ok) return toast(v.message,'warning'); const {error}=await sb.from('bookings').update({status:'completed',is_locked:true,completed_by:currentProfile.id,completed_at:new Date().toISOString()}).eq('id',bookingId); if(error) return toast(error.message,'error'); toast('Booking completed and locked','success'); closeModal('modal-booking'); await renderCalendar(); }
 document.getElementById('btn-mark-complete')?.addEventListener('click',()=>{const id=document.getElementById('booking-id').value;if(id)completeBooking(id);});
 async function loadIncidentReports(){const {data,error}=await sb.from('incident_reports').select('*').order('created_at',{ascending:false}).limit(100);document.getElementById('incident-list').innerHTML=error?error.message:(data||[]).map(i=>`<div class="inspection-item"><div class="inspection-title">${i.incident_type}</div><div class="inspection-meta">${i.driver_id} · ${i.vehicle_reg} · ${i.status}</div></div>`).join('')||'No incidents';}
-async function loadWagesReconciliation(){const {data,error}=await sb.from('recon_sheets').select('*').order('created_at',{ascending:false}).limit(100);document.getElementById('wages-list').innerHTML=error?error.message:(data||[]).map(r=>`<div class="inspection-item"><div class="inspection-title">${r.driver_id} · ${r.tour_reference||'—'}</div><div class="inspection-meta">${r.week_start} → ${r.week_end} · Rate: ${r.driver_rate||'—'}</div></div>`).join('')||'No wages records';}
+async function loadWagesReconciliation() {
+  const { data, error } = await sb.from('recon_sheets').select('*').order('created_at', { ascending: false }).limit(100);
+  document.getElementById('wages-list').innerHTML = error ? error.message : (data || []).map((r) => `
+    <div class="inspection-item">
+      <div class="inspection-title">${r.driver_id} · ${r.tour_reference || '—'}</div>
+      <div class="inspection-meta">${r.week_start} → ${r.week_end} · Rate: ${r.driver_rate || '—'}</div>
+    </div>`).join('') || 'No wages records';
+  await loadWagesTransferRecon();
+}
+
+async function loadWagesTransferRecon() {
+  const container = document.getElementById('wages-transfer-recon-list');
+  if (!container) return;
+  const { data, error } = await sb
+    .from('transfer_recon_sheets')
+    .select('*, profiles!transfer_recon_sheets_driver_id_fkey(name, driver_id)')
+    .in('status', ['submitted', 'reviewed'])
+    .order('week_start', { ascending: false })
+    .limit(50);
+  if (error) { container.innerHTML = `<p style="color:var(--red)">${error.message}</p>`; return; }
+  if (!data?.length) { container.innerHTML = `<div class="empty-state"><div class="empty-icon">📝</div><p>No transfer recon sheets submitted yet.</p></div>`; return; }
+  container.innerHTML = data.map((s) => `
+    <div class="inspection-item" onclick="openTransferReconDetail('${s.id}')">
+      <div style="flex:1;min-width:0">
+        <div class="inspection-title">${s.profiles?.name || s.driver_id} · ${formatDate(s.week_start)} — ${formatDate(s.week_end)}</div>
+        <div class="inspection-meta">${(s.transfers || []).length} transfer(s) · Submitted: ${s.submitted_at ? formatDate(s.submitted_at) : '—'}</div>
+      </div>
+      <div style="display:flex;gap:6px;flex-shrink:0">
+        ${statusBadge(s.status)}
+        <button class="btn btn-sm btn-amber" onclick="event.stopPropagation();downloadTransferReconPDF('${s.id}')">PDF</button>
+      </div>
+    </div>`).join('');
+}
+
 async function loadVehicleChecklists(){const {data,error}=await sb.from('vehicle_checklists').select('*').order('checklist_date',{ascending:false}).limit(100);document.getElementById('checklist-list').innerHTML=error?error.message:(data||[]).map(c=>`<div class="inspection-item"><div class="inspection-title">${c.vehicle_reg} · ${c.checklist_date}</div><div class="inspection-meta">${c.driver_id} · ${c.status}</div></div>`).join('')||'No checklists';}
+
+// ── TRANSFER RECON REVIEW (ADMIN) ──────────────────────────────
+async function loadTransferReconReview() {
+  const container = document.getElementById('transfer-recon-list');
+  if (!container) return;
+  container.innerHTML = '<div class="spinner"></div>';
+
+  const driverFilter = document.getElementById('tr-filter-driver')?.value || '';
+  const weekFilter   = document.getElementById('tr-filter-week')?.value   || '';
+  const statusFilter = document.getElementById('tr-filter-status')?.value || '';
+
+  let query = sb
+    .from('transfer_recon_sheets')
+    .select('*, profiles!transfer_recon_sheets_driver_id_fkey(name, driver_id)')
+    .order('week_start', { ascending: false });
+
+  if (driverFilter) query = query.eq('driver_id', driverFilter);
+  if (weekFilter)   query = query.eq('week_start', weekFilter);
+  if (statusFilter) query = query.eq('status', statusFilter);
+
+  const { data, error } = await query;
+  if (error) { container.innerHTML = `<p style="color:var(--red)">Error: ${error.message}</p>`; return; }
+  if (!data?.length) {
+    container.innerHTML = `<div class="empty-state"><div class="empty-icon">📝</div><p>No transfer recon sheets found.</p></div>`;
+    return;
+  }
+
+  const { data: drivers } = await sb.from('profiles').select('driver_id,name').eq('role','driver').eq('is_active',true).order('name');
+  const driverSel = document.getElementById('tr-filter-driver');
+  if (driverSel && driverSel.options.length <= 1) {
+    (drivers || []).forEach((d) => {
+      const opt = document.createElement('option');
+      opt.value = d.driver_id; opt.textContent = `${d.name} (${d.driver_id})`;
+      driverSel.appendChild(opt);
+    });
+  }
+
+  container.innerHTML = data.map((s) => `
+    <div class="inspection-item" onclick="openTransferReconDetail('${s.id}')">
+      <div style="flex:1;min-width:0">
+        <div class="inspection-title">${s.profiles?.name || s.driver_id} · Week ${formatDate(s.week_start)} — ${formatDate(s.week_end)}</div>
+        <div class="inspection-meta">${(s.transfers || []).length} transfer(s) · ${s.submitted_at ? 'Submitted ' + formatDate(s.submitted_at) : 'Draft'}</div>
+      </div>
+      <div style="display:flex;gap:8px;align-items:center;flex-shrink:0">
+        ${statusBadge(s.status)}
+        <button class="btn btn-sm btn-outline" onclick="event.stopPropagation();openTransferReconDetail('${s.id}')">View</button>
+        <button class="btn btn-sm btn-amber" onclick="event.stopPropagation();downloadTransferReconPDF('${s.id}')">PDF</button>
+      </div>
+    </div>`).join('');
+}
+
+async function openTransferReconDetail(id) {
+  const { data: sheet, error } = await sb
+    .from('transfer_recon_sheets')
+    .select('*, profiles!transfer_recon_sheets_driver_id_fkey(name, driver_id)')
+    .eq('id', id)
+    .single();
+  if (error || !sheet) { toast(error?.message || 'Sheet not found', 'error'); return; }
+
+  document.getElementById('transfer-recon-detail-id').value = id;
+  const transfers = Array.isArray(sheet.transfers) ? sheet.transfers : [];
+
+  const tableRows = transfers.map((t, i) => `
+    <tr style="border-bottom:1px solid var(--border)">
+      <td style="padding:6px 8px">${i + 1}</td>
+      <td style="padding:6px 8px">${t.vehicle_reg || '—'}</td>
+      <td style="padding:6px 8px">${t.vehicle_name || '—'}</td>
+      <td style="padding:6px 8px">${t.transfer_date ? formatDate(t.transfer_date) : '—'}</td>
+      <td style="padding:6px 8px;font-weight:600">${t.reference_nr || '—'}</td>
+      <td style="padding:6px 8px">${t.tla_type || '—'}</td>
+      <td style="padding:6px 8px">${t.description || '—'}</td>
+      <td style="padding:6px 8px">${t.notes || '—'}</td>
+    </tr>`).join('');
+
+  document.getElementById('transfer-recon-detail-body').innerHTML = `
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px">
+      <div><strong>Driver</strong><p>${sheet.profiles?.name || 'Unknown'} (${sheet.profiles?.driver_id || sheet.driver_id})</p></div>
+      <div><strong>Week</strong><p>${formatDate(sheet.week_start)} — ${formatDate(sheet.week_end)}</p></div>
+      <div><strong>Status</strong><p>${statusBadge(sheet.status)}</p></div>
+      <div><strong>Submitted</strong><p>${sheet.submitted_at ? formatDateTime(sheet.submitted_at) : '—'}</p></div>
+    </div>
+    <div style="overflow-x:auto;margin-bottom:16px">
+      <table style="width:100%;border-collapse:collapse;font-size:.82rem">
+        <thead>
+          <tr style="background:var(--navy);color:#fff">
+            <th style="padding:7px 8px">#</th>
+            <th style="padding:7px 8px">Vehicle Reg</th>
+            <th style="padding:7px 8px">Vehicle Name</th>
+            <th style="padding:7px 8px">Transfer Date</th>
+            <th style="padding:7px 8px">Tour/Transfer Ref Nr</th>
+            <th style="padding:7px 8px">T/L/A Type</th>
+            <th style="padding:7px 8px">Description</th>
+            <th style="padding:7px 8px">Notes</th>
+          </tr>
+        </thead>
+        <tbody>${tableRows || '<tr><td colspan="8" style="padding:12px;text-align:center;color:var(--text-muted)">No transfers recorded.</td></tr>'}</tbody>
+      </table>
+    </div>
+    <div style="display:flex;gap:8px">
+      <button class="btn btn-amber btn-full" onclick="downloadTransferReconPDF('${sheet.id}')">⬇ Download PDF</button>
+      ${sheet.status === 'submitted' ? `<button class="btn btn-outline" onclick="markTransferReconReviewed('${sheet.id}')">✓ Mark Reviewed</button>` : ''}
+    </div>`;
+  openModal('modal-transfer-recon-detail');
+}
+
+async function markTransferReconReviewed(id) {
+  const { error } = await sb.from('transfer_recon_sheets').update({
+    status: 'reviewed',
+    reviewed_by: currentUser?.id || null,
+    reviewed_at: new Date().toISOString(),
+  }).eq('id', id);
+  if (error) { toast(error.message, 'error'); return; }
+  toast('Marked as reviewed', 'success');
+  closeModal('modal-transfer-recon-detail');
+  loadTransferReconReview();
+}
+window.markTransferReconReviewed = markTransferReconReviewed;
+window.openTransferReconDetail   = openTransferReconDetail;
+
+async function downloadTransferReconPDF(id) {
+  const { data: sheet, error } = await sb
+    .from('transfer_recon_sheets')
+    .select('*, profiles!transfer_recon_sheets_driver_id_fkey(name, driver_id)')
+    .eq('id', id)
+    .single();
+  if (error || !sheet) { toast(error?.message || 'Not found', 'error'); return; }
+  toast('Generating PDF…', 'info', 4000);
+
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+  const W   = doc.internal.pageSize.getWidth();
+  const H   = doc.internal.pageSize.getHeight();
+  let y = 0;
+
+  doc.setFillColor(15, 39, 68);
+  doc.rect(0, 0, W, 22, 'F');
+  doc.setTextColor(255, 255, 255);
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(15);
+  doc.text('INYATHI', 10, 10);
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(8);
+  doc.text(CONFIG.COMPANY_NAME, 10, 16);
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(13);
+  doc.text('TRANSFER RECON FOR WEEKLY PAYMENT', W / 2, 13, { align: 'center' });
+  y = 28;
+
+  doc.setTextColor(30, 41, 59); doc.setFontSize(9); doc.setFont('helvetica', 'bold');
+  doc.text('Driver Name:', 10, y);
+  doc.setFont('helvetica', 'normal');
+  doc.text(sheet.profiles?.name || sheet.driver_id || '—', 38, y);
+  doc.setFont('helvetica', 'bold');
+  doc.text('Week:', W / 2, y);
+  doc.setFont('helvetica', 'normal');
+  doc.text(`${sheet.week_start} to ${sheet.week_end}`, W / 2 + 14, y);
+  y += 6;
+
+  doc.setFontSize(7.5); doc.setFont('helvetica', 'italic'); doc.setTextColor(80, 80, 80);
+  const notice = 'All transfer information to be added here. Client reference numbers to be added to every date. NO salary will be paid if this form has not been completed and sent to the office by every Thursday.';
+  const noticeLines = doc.splitTextToSize(notice, W - 20);
+  doc.text(noticeLines, 10, y);
+  y += noticeLines.length * 4 + 4;
+
+  const colWidths = [8, 28, 28, 26, 44, 36, 46, 35];
+  const colX = colWidths.reduce((acc, w, i) => { acc.push(i === 0 ? 8 : acc[i - 1] + colWidths[i - 1]); return acc; }, []);
+  const headers = ['#', 'Vehicle Reg', 'Vehicle Name', 'Transfer Date', 'Tour/Transfer Ref Nr', 'T/L/A Type', 'Description', 'Notes'];
+
+  doc.setFillColor(15, 39, 68);
+  doc.rect(8, y - 4, W - 16, 8, 'F');
+  doc.setTextColor(255, 255, 255); doc.setFont('helvetica', 'bold'); doc.setFontSize(7.5);
+  headers.forEach((h, i) => doc.text(h, colX[i] + 1, y));
+  y += 5;
+
+  const transfers = Array.isArray(sheet.transfers) ? sheet.transfers : [];
+  transfers.forEach((t, idx) => {
+    if (y > H - 20) {
+      doc.addPage();
+      y = 14;
+    }
+    const bg = idx % 2 === 0 ? [249, 250, 251] : [255, 255, 255];
+    doc.setFillColor(...bg);
+    doc.rect(8, y - 4, W - 16, 7, 'F');
+    doc.setTextColor(30, 41, 59); doc.setFont('helvetica', 'normal'); doc.setFontSize(7.5);
+    const cells = [
+      String(idx + 1),
+      t.vehicle_reg  || '—',
+      t.vehicle_name || '—',
+      t.transfer_date ? formatDate(t.transfer_date) : '—',
+      t.reference_nr || '—',
+      t.tla_type     || '—',
+      t.description  || '—',
+      t.notes        || '—',
+    ];
+    cells.forEach((cell, i) => {
+      const clipped = doc.splitTextToSize(String(cell), colWidths[i] - 2)[0] || '';
+      doc.text(clipped, colX[i] + 1, y);
+    });
+    doc.setDrawColor(220, 220, 220);
+    doc.line(8, y + 3, W - 8, y + 3);
+    y += 7;
+  });
+
+  if (!transfers.length) {
+    doc.setTextColor(120, 120, 120); doc.setFont('helvetica', 'italic'); doc.setFontSize(8);
+    doc.text('No transfers recorded.', W / 2, y, { align: 'center' });
+    y += 8;
+  }
+
+  y += 6;
+  doc.setTextColor(30, 41, 59); doc.setFont('helvetica', 'bold'); doc.setFontSize(8);
+  doc.text(`Total Transfers: ${transfers.length}`, 10, y);
+  doc.setFont('helvetica', 'normal');
+  doc.text(`Generated: ${new Date().toLocaleString('en-ZA')}`, W - 10, y, { align: 'right' });
+
+  const driverCode = sheet.profiles?.driver_id || sheet.driver_id || 'DRV';
+  doc.save(`TRANSFER_RECON_${driverCode}_${sheet.week_start}.pdf`);
+  toast('Transfer Recon PDF downloaded', 'success');
+}
+window.downloadTransferReconPDF = downloadTransferReconPDF;

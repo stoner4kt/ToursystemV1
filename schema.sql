@@ -249,3 +249,40 @@ VALUES
 ON CONFLICT DO NOTHING;
 ALTER TABLE public.bookings
 ADD COLUMN IF NOT EXISTS booking_documents JSONB DEFAULT '[]'::jsonb;
+
+-- 7. TRANSFER RECON SHEETS (weekly driver transfer payment form)
+CREATE TABLE IF NOT EXISTS public.transfer_recon_sheets (
+  id          UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+  driver_id   TEXT        NOT NULL REFERENCES public.profiles(driver_id),
+  week_start  DATE        NOT NULL,
+  week_end    DATE        NOT NULL,
+  transfers   JSONB       NOT NULL DEFAULT '[]',
+  status      TEXT        NOT NULL DEFAULT 'draft'
+                          CHECK (status IN ('draft', 'submitted', 'reviewed')),
+  submitted_at  TIMESTAMPTZ,
+  reviewed_by   UUID REFERENCES public.profiles(id),
+  reviewed_at   TIMESTAMPTZ,
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_transfer_recon_driver ON public.transfer_recon_sheets(driver_id);
+CREATE INDEX IF NOT EXISTS idx_transfer_recon_week   ON public.transfer_recon_sheets(week_start, week_end);
+CREATE INDEX IF NOT EXISTS idx_transfer_recon_status ON public.transfer_recon_sheets(status);
+
+CREATE TRIGGER trg_transfer_recon_updated_at
+  BEFORE UPDATE ON public.transfer_recon_sheets
+  FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
+
+ALTER TABLE public.transfer_recon_sheets ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "transfer_recon_own_select" ON public.transfer_recon_sheets FOR SELECT
+  USING (driver_id = (SELECT driver_id FROM public.profiles WHERE id = auth.uid()));
+CREATE POLICY "transfer_recon_own_insert" ON public.transfer_recon_sheets FOR INSERT
+  WITH CHECK (driver_id = (SELECT driver_id FROM public.profiles WHERE id = auth.uid()));
+CREATE POLICY "transfer_recon_own_update" ON public.transfer_recon_sheets FOR UPDATE
+  USING (driver_id = (SELECT driver_id FROM public.profiles WHERE id = auth.uid()))
+  WITH CHECK (driver_id = (SELECT driver_id FROM public.profiles WHERE id = auth.uid()));
+CREATE POLICY "transfer_recon_admin" ON public.transfer_recon_sheets FOR ALL
+  USING (public.is_admin())
+  WITH CHECK (public.is_admin());
