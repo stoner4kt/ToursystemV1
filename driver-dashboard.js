@@ -41,6 +41,7 @@ async function switchDriverTab(target) {
   if(target==='checklists') await loadDriverChecklists();
   if(target==='incidents') await loadDriverIncidents();
   if(target==='documents') await loadMyDocuments();
+  if(target==='transfer-recon') await loadTransferRecon();
 }
 
 document.querySelectorAll('.tab-btn').forEach((btn) => {
@@ -197,3 +198,211 @@ document.getElementById('checklist-form')?.addEventListener('submit', async (e)=
 async function loadDriverIncidents(){const {data:b}=await sb.from('bookings').select('id,invoice_no').eq('assigned_driver_id',currentProfile.driver_id).order('start_date',{ascending:false}); document.getElementById('incident-booking').innerHTML=(b||[]).map(x=>`<option value="${x.id}">${x.invoice_no}</option>`).join(''); const {data}=await sb.from('incident_reports').select('*').eq('driver_id',currentProfile.driver_id).order('created_at',{ascending:false}); document.getElementById('incident-history').innerHTML=(data||[]).map(i=>`<div>${i.incident_type} · ${i.status}</div>`).join('');}
 document.getElementById('incident-form')?.addEventListener('submit', async (e)=>{e.preventDefault(); const pdf=await uploadPdfToCloudinary(document.getElementById('incident-pdf').files[0]); const payload={booking_id:document.getElementById('incident-booking').value,driver_id:currentProfile.driver_id,vehicle_reg:null,incident_type:document.getElementById('incident-type').value||'other',description:document.getElementById('incident-description').value,location:document.getElementById('incident-location').value||null,injuries:document.getElementById('incident-injuries').checked,pdf_url:pdf,status:'reported'}; const {error}=await sb.from('incident_reports').insert(payload); if(error) return toast(error.message,'error'); toast('Incident submitted','success'); await loadDriverIncidents();});
 async function loadMyDocuments(){const [i,c,n,r]=await Promise.all([sb.from('inspections').select('id,created_at,pdf_urls').eq('driver_id',currentProfile.driver_id),sb.from('vehicle_checklists').select('id,checklist_date,pdf_url').eq('driver_id',currentProfile.driver_id),sb.from('incident_reports').select('id,incident_date,pdf_url').eq('driver_id',currentProfile.driver_id),sb.from('recon_sheets').select('id,week_start,week_end').eq('driver_id',currentProfile.driver_id)]); const docs=[]; (i.data||[]).forEach(x=>(x.pdf_urls||[]).forEach(u=>docs.push(`<li>Inspection (${x.created_at}) <a href="${u}" target="_blank">PDF</a></li>`))); (c.data||[]).forEach(x=>docs.push(`<li>Checklist ${x.checklist_date} ${x.pdf_url?`<a href="${x.pdf_url}" target="_blank">PDF</a>`:''}</li>`)); (n.data||[]).forEach(x=>docs.push(`<li>Incident ${x.incident_date} ${x.pdf_url?`<a href="${x.pdf_url}" target="_blank">PDF</a>`:''}</li>`)); (r.data||[]).forEach(x=>docs.push(`<li>Recon ${x.week_start} - ${x.week_end}</li>`)); document.getElementById('my-documents-list').innerHTML=`<ul>${docs.join('')}</ul>`;}
+
+// ── TRANSFER RECON ─────────────────────────────────────────────
+const TR_DRAFT_KEY = () => `tr_draft_${currentProfile?.driver_id}_${trGetWeekRange().start}`;
+let trCurrentSheet = null;
+let trIsSubmitted  = false;
+
+function trGetWeekRange(d = new Date()) {
+  const date = new Date(d);
+  const day  = date.getDay();
+  const diff = (day === 0) ? -6 : 1 - day;
+  const start = new Date(date);
+  start.setDate(date.getDate() + diff);
+  const end = new Date(start);
+  end.setDate(start.getDate() + 6);
+  return {
+    start: start.toISOString().split('T')[0],
+    end:   end.toISOString().split('T')[0],
+  };
+}
+
+async function loadTransferRecon() {
+  if (!currentProfile?.driver_id) return;
+
+  const range = trGetWeekRange();
+  document.getElementById('tr-driver-name').value = currentProfile?.name || '';
+  document.getElementById('tr-week-label').textContent =
+    `Week: ${formatDate(range.start)} — ${formatDate(range.end)}`;
+
+  const { data, error } = await sb
+    .from('transfer_recon_sheets')
+    .select('*')
+    .eq('driver_id', currentProfile.driver_id)
+    .eq('week_start', range.start)
+    .maybeSingle();
+
+  if (error) console.warn('Transfer recon load error:', error.message);
+
+  trCurrentSheet = data || null;
+  trIsSubmitted  = data?.status === 'submitted' || data?.status === 'reviewed';
+
+  const statusBadgeEl = document.getElementById('tr-status-badge');
+  if (statusBadgeEl) {
+    statusBadgeEl.innerHTML = trCurrentSheet
+      ? statusBadge(trCurrentSheet.status)
+      : '<span class="badge badge-gray">New</span>';
+  }
+
+  const submittedNotice = document.getElementById('tr-submitted-notice');
+  const addRowBtn       = document.getElementById('tr-add-row-btn');
+  const submitWrapper   = document.getElementById('tr-submit-wrapper');
+  if (submittedNotice) submittedNotice.style.display = trIsSubmitted ? 'block' : 'none';
+  if (addRowBtn)       addRowBtn.style.display       = trIsSubmitted ? 'none'  : '';
+  if (submitWrapper)   submitWrapper.style.display    = trIsSubmitted ? 'none'  : '';
+
+  let transfers = [];
+  if (trCurrentSheet) {
+    transfers = Array.isArray(trCurrentSheet.transfers) ? trCurrentSheet.transfers : [];
+  } else {
+    try {
+      const saved = localStorage.getItem(TR_DRAFT_KEY());
+      if (saved) transfers = JSON.parse(saved);
+    } catch (_) {}
+  }
+
+  if (!transfers.length) transfers = [trEmptyRow()];
+  renderTransferRows(transfers);
+  await loadTransferReconHistory();
+}
+
+function trEmptyRow() {
+  return { vehicle_reg: '', vehicle_name: '', transfer_date: '', reference_nr: '', tla_type: '', description: '', notes: '' };
+}
+
+function renderTransferRows(rows) {
+  const tbody = document.getElementById('tr-table-body');
+  if (!tbody) return;
+  tbody.innerHTML = rows.map((row, i) => `
+    <tr id="tr-row-${i}" style="border-bottom:1px solid var(--border)">
+      <td style="padding:4px 4px"><input class="form-control" style="min-width:80px;font-size:.8rem" value="${row.vehicle_reg||''}" ${trIsSubmitted?'readonly':''} oninput="trUpdateRow(${i},'vehicle_reg',this.value)"></td>
+      <td style="padding:4px 4px"><input class="form-control" style="min-width:80px;font-size:.8rem" value="${row.vehicle_name||''}" ${trIsSubmitted?'readonly':''} oninput="trUpdateRow(${i},'vehicle_name',this.value)"></td>
+      <td style="padding:4px 4px"><input type="date" class="form-control" style="min-width:100px;font-size:.8rem" value="${row.transfer_date||''}" ${trIsSubmitted?'readonly':''} oninput="trUpdateRow(${i},'transfer_date',this.value)"></td>
+      <td style="padding:4px 4px"><input class="form-control" style="min-width:120px;font-size:.8rem;font-weight:600" value="${row.reference_nr||''}" ${trIsSubmitted?'readonly':''} placeholder="Required *" oninput="trUpdateRow(${i},'reference_nr',this.value)"></td>
+      <td style="padding:4px 4px">
+        <select class="form-control" style="min-width:110px;font-size:.8rem" ${trIsSubmitted?'disabled':''} onchange="trUpdateRow(${i},'tla_type',this.value)">
+          <option value="">— Select —</option>
+          <option value="Tour" ${row.tla_type==='Tour'?'selected':''}>T = Tour</option>
+          <option value="Long Transfer" ${row.tla_type==='Long Transfer'?'selected':''}>L = Long Transfer</option>
+          <option value="Airport Transfer" ${row.tla_type==='Airport Transfer'?'selected':''}>A = Airport Transfer</option>
+        </select>
+      </td>
+      <td style="padding:4px 4px"><input class="form-control" style="min-width:110px;font-size:.8rem" value="${row.description||''}" ${trIsSubmitted?'readonly':''} oninput="trUpdateRow(${i},'description',this.value)"></td>
+      <td style="padding:4px 4px"><input class="form-control" style="min-width:80px;font-size:.8rem" value="${row.notes||''}" ${trIsSubmitted?'readonly':''} oninput="trUpdateRow(${i},'notes',this.value)"></td>
+      <td style="padding:4px 4px;text-align:center">
+        ${!trIsSubmitted ? `<button type="button" class="btn btn-sm btn-danger" onclick="removeTransferRow(${i})" title="Remove row">✕</button>` : ''}
+      </td>
+    </tr>`).join('');
+}
+
+let _trRows = [];
+
+function trUpdateRow(index, field, value) {
+  const tbody = document.getElementById('tr-table-body');
+  if (!tbody) return;
+  const rows = trCollectRows();
+  if (rows[index]) rows[index][field] = value;
+  try { localStorage.setItem(TR_DRAFT_KEY(), JSON.stringify(rows)); } catch(_) {}
+}
+
+function trCollectRows() {
+  const tbody = document.getElementById('tr-table-body');
+  if (!tbody) return [];
+  const rows = [];
+  tbody.querySelectorAll('tr[id^="tr-row-"]').forEach((tr, i) => {
+    const inputs  = tr.querySelectorAll('input');
+    const selects = tr.querySelectorAll('select');
+    rows.push({
+      vehicle_reg:   inputs[0]?.value  || '',
+      vehicle_name:  inputs[1]?.value  || '',
+      transfer_date: inputs[2]?.value  || '',
+      reference_nr:  inputs[3]?.value  || '',
+      tla_type:      selects[0]?.value || '',
+      description:   inputs[4]?.value  || '',
+      notes:         inputs[5]?.value  || '',
+    });
+  });
+  return rows;
+}
+
+function addTransferRow() {
+  const rows = trCollectRows();
+  if (rows.length >= 20) return toast('Maximum 20 transfer rows allowed', 'warning');
+  rows.push(trEmptyRow());
+  renderTransferRows(rows);
+  try { localStorage.setItem(TR_DRAFT_KEY(), JSON.stringify(rows)); } catch(_) {}
+}
+window.addTransferRow = addTransferRow;
+
+function removeTransferRow(index) {
+  const rows = trCollectRows();
+  if (rows.length <= 1) return toast('At least one transfer row is required', 'warning');
+  rows.splice(index, 1);
+  renderTransferRows(rows);
+  try { localStorage.setItem(TR_DRAFT_KEY(), JSON.stringify(rows)); } catch(_) {}
+}
+window.removeTransferRow = removeTransferRow;
+
+async function submitTransferRecon() {
+  const rows = trCollectRows();
+  if (!rows.length) return toast('Add at least one transfer entry', 'error');
+
+  const invalid = rows.filter(r => !r.reference_nr.trim());
+  if (invalid.length) return toast('Tour/Transfer Reference Nr is required for every row', 'error');
+
+  const btn = document.getElementById('tr-submit-btn');
+  if (btn) { btn.disabled = true; btn.textContent = 'Submitting…'; }
+
+  try {
+    const range = trGetWeekRange();
+    const payload = {
+      driver_id:    currentProfile.driver_id,
+      week_start:   range.start,
+      week_end:     range.end,
+      transfers:    rows,
+      status:       'submitted',
+      submitted_at: new Date().toISOString(),
+    };
+
+    let error;
+    if (trCurrentSheet?.id) {
+      ({ error } = await sb.from('transfer_recon_sheets').update(payload).eq('id', trCurrentSheet.id));
+    } else {
+      ({ error } = await sb.from('transfer_recon_sheets').insert(payload));
+    }
+
+    if (error) throw error;
+
+    try { localStorage.removeItem(TR_DRAFT_KEY()); } catch(_) {}
+
+    toast('Transfer recon submitted successfully!', 'success');
+    await loadTransferRecon();
+  } catch (err) {
+    toast(err.message || 'Failed to submit', 'error');
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = 'Submit Transfer Recon'; }
+  }
+}
+window.submitTransferRecon = submitTransferRecon;
+
+async function loadTransferReconHistory() {
+  const container = document.getElementById('tr-history-list');
+  if (!container) return;
+  const { data, error } = await sb
+    .from('transfer_recon_sheets')
+    .select('id,week_start,week_end,status,submitted_at,transfers')
+    .eq('driver_id', currentProfile.driver_id)
+    .order('week_start', { ascending: false })
+    .limit(10);
+  if (error) { container.innerHTML = `<p style="color:var(--red)">${error.message}</p>`; return; }
+  if (!data?.length) { container.innerHTML = `<div class="empty-state"><div class="empty-icon">📝</div><p>No previous submissions.</p></div>`; return; }
+  container.innerHTML = data.map((s) => `
+    <div class="inspection-item">
+      <div style="flex:1;min-width:0">
+        <div class="inspection-title">Week: ${formatDate(s.week_start)} — ${formatDate(s.week_end)}</div>
+        <div class="inspection-meta">${(s.transfers||[]).length} transfer(s) · Submitted: ${s.submitted_at ? formatDate(s.submitted_at) : '—'}</div>
+      </div>
+      ${statusBadge(s.status)}
+    </div>`).join('');
+}

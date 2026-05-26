@@ -52,6 +52,11 @@
       </button>
     </div>
     <div class="sidebar-nav-item">
+      <button class="sidebar-nav-link" data-tab="transfer-recon" onclick="switchDriverTab('transfer-recon')">
+        <span class="sidebar-nav-icon">📝</span> Transfer Recon
+      </button>
+    </div>
+    <div class="sidebar-nav-item">
       <button class="sidebar-nav-link" data-tab="documents" onclick="switchDriverTab('documents')">
         <span class="sidebar-nav-icon">📁</span> My Documents
       </button>
@@ -93,6 +98,7 @@
   <button class="tab-btn" data-tab="recon" id="tab-btn-recon">📊 Recon Sheet</button>
   <button class="tab-btn" data-tab="checklists" id="tab-btn-checklists">🛠 Vehicle Checklists</button>
   <button class="tab-btn" data-tab="incidents" id="tab-btn-incidents">🚨 Incident Reports</button>
+  <button class="tab-btn" data-tab="transfer-recon" id="tab-btn-transfer-recon">📝 Transfer Recon</button>
   <button class="tab-btn" data-tab="documents" id="tab-btn-documents">📁 My Documents</button>
 </nav>
 
@@ -193,6 +199,69 @@
 
   <div class="tab-panel" id="tab-checklists"><div class="card"><div class="card-title">Vehicle Checklists</div><form id="checklist-form"><input type="date" id="checklist-date" class="form-control" readonly><select id="checklist-vehicle" class="form-control"></select><div id="checklist-items"></div><textarea id="checklist-notes" class="form-control" placeholder="Notes..."></textarea><input type="file" accept=".pdf" id="checklist-pdf-input" class="form-control"><button class="btn btn-amber btn-full" type="submit">Submit Checklist</button></form><div id="checklist-history"></div></div></div>
   <div class="tab-panel" id="tab-incidents"><div class="card"><div class="card-title">Incident Reports</div><form id="incident-form"><select id="incident-booking" class="form-control"></select><input type="text" id="incident-type" class="form-control" placeholder="Type"><textarea id="incident-description" class="form-control" placeholder="Description"></textarea><input type="text" id="incident-location" class="form-control" placeholder="Location"><label><input type="checkbox" id="incident-injuries"> Injuries Involved</label><input type="file" accept="image/*" multiple id="incident-photos" class="form-control"><input type="file" accept=".pdf" id="incident-pdf" class="form-control"><button class="btn btn-amber btn-full" type="submit">Submit Incident</button></form><div id="incident-history"></div></div></div>
+  <!-- ═══ TRANSFER RECON TAB ═══ -->
+  <div class="tab-panel" id="tab-transfer-recon">
+    <div class="card">
+      <div class="card-header">
+        <div>
+          <div class="card-title">Transfer Recon for Weekly Payment</div>
+          <div class="card-subtitle" id="tr-week-label">Current week</div>
+        </div>
+        <span id="tr-status-badge"></span>
+      </div>
+
+      <div class="tr-notice" style="background:var(--amber-light,#fffbeb);border:1px solid var(--amber);border-radius:8px;padding:12px 14px;font-size:.82rem;color:var(--navy);margin-bottom:16px;line-height:1.5">
+        All transfer information to be added here. Client reference numbers to be added to every date.
+        <strong>NO salary will be paid if this form has not been completed and sent to the office by every Thursday.</strong>
+        Payments will be done once form has been received and checked. NO immediate payments will be made.
+      </div>
+
+      <div class="form-group" style="margin-bottom:14px">
+        <label>Driver Name</label>
+        <input id="tr-driver-name" class="form-control" readonly>
+      </div>
+
+      <div id="tr-submitted-notice" style="display:none;background:var(--green-light,#f0fdf4);border:1px solid var(--green);border-radius:8px;padding:12px 14px;font-size:.85rem;color:var(--green-dark,#166534);margin-bottom:14px;font-weight:600">
+        ✅ This transfer recon sheet has been submitted and is locked.
+      </div>
+
+      <div class="card-title" style="font-size:.9rem;margin-bottom:10px">Transfer Entries</div>
+
+      <div style="overflow-x:auto">
+        <table id="tr-table" style="width:100%;border-collapse:collapse;font-size:.82rem">
+          <thead>
+            <tr style="background:var(--navy);color:#fff">
+              <th style="padding:8px 6px;text-align:left;min-width:90px">Vehicle Reg</th>
+              <th style="padding:8px 6px;text-align:left;min-width:90px">Vehicle Name</th>
+              <th style="padding:8px 6px;text-align:left;min-width:110px">Transfer Date</th>
+              <th style="padding:8px 6px;text-align:left;min-width:140px">Tour/Transfer Ref Nr <span class="required">*</span></th>
+              <th style="padding:8px 6px;text-align:left;min-width:130px">T/L/A Type</th>
+              <th style="padding:8px 6px;text-align:left;min-width:130px">Description</th>
+              <th style="padding:8px 6px;text-align:left;min-width:100px">Notes</th>
+              <th style="padding:8px 6px;text-align:center;width:44px"></th>
+            </tr>
+          </thead>
+          <tbody id="tr-table-body"></tbody>
+        </table>
+      </div>
+
+      <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap" id="tr-form-actions">
+        <button type="button" class="btn btn-outline btn-sm" id="tr-add-row-btn" onclick="addTransferRow()">+ Add Transfer</button>
+      </div>
+
+      <div style="margin-top:18px" id="tr-submit-wrapper">
+        <button type="button" class="btn btn-amber btn-full" id="tr-submit-btn" style="padding:13px;font-size:1rem" onclick="submitTransferRecon()">
+          Submit Transfer Recon
+        </button>
+      </div>
+    </div>
+
+    <div class="card" style="margin-top:14px">
+      <div class="card-title">Previous Submissions</div>
+      <div id="tr-history-list"><div class="spinner"></div></div>
+    </div>
+  </div>
+
   <div class="tab-panel" id="tab-documents"><div class="card"><div class="card-title">My Documents</div><div id="my-documents-list"></div></div></div>
 </main>
 

@@ -57,6 +57,11 @@
       </button>
     </div>
     <div class="sidebar-nav-item">
+      <button class="sidebar-nav-link" data-tab="transfer-recon" onclick="switchTab('transfer-recon')">
+        <span class="sidebar-nav-icon">📝</span> Transfer Recon
+      </button>
+    </div>
+    <div class="sidebar-nav-item">
       <button class="sidebar-nav-link" data-tab="checklists" onclick="switchTab('checklists')">
         <span class="sidebar-nav-icon">🛠</span> Vehicle Checklists
       </button>
@@ -116,6 +121,7 @@
   <button class="tab-btn" data-tab="recon">📊 Recon</button>
   <button class="tab-btn" data-tab="incidents">🚨 Incident Reports</button>
   <button class="tab-btn" data-tab="wages">💷 Wages Reconciliation</button>
+  <button class="tab-btn" data-tab="transfer-recon">📝 Transfer Recon</button>
   <button class="tab-btn" data-tab="checklists">🛠 Vehicle Checklists</button>
   <button class="tab-btn" data-tab="reports">📋 Reports</button>
   <button class="tab-btn" data-tab="bookings-archive">📚 Bookings Archive</button>
@@ -226,7 +232,60 @@
 
 
   <div class="tab-panel" id="tab-incidents"><div class="card"><div class="card-title">Incident Reports</div><div id="incident-list"></div></div></div>
-  <div class="tab-panel" id="tab-wages"><div class="card"><div class="card-title">Wages Reconciliation</div><div id="wages-list"></div></div></div>
+  <div class="tab-panel" id="tab-wages">
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title">Wages Reconciliation</div>
+      </div>
+      <div id="wages-list"></div>
+    </div>
+    <div class="card" style="margin-top:16px">
+      <div class="card-header">
+        <div>
+          <div class="card-title">Transfer Recon Submissions</div>
+          <div class="card-subtitle">Submitted weekly transfer recon sheets</div>
+        </div>
+      </div>
+      <div id="wages-transfer-recon-list"><div class="spinner"></div></div>
+    </div>
+  </div>
+
+  <!-- ═══ TRANSFER RECON TAB ═══ -->
+  <div class="tab-panel" id="tab-transfer-recon">
+    <div class="card">
+      <div class="card-header">
+        <div>
+          <div class="card-title">Transfer Recon for Weekly Payment</div>
+          <div class="card-subtitle">All submitted driver transfer reconciliation sheets</div>
+        </div>
+      </div>
+      <div class="form-row" style="margin-bottom:12px">
+        <div class="form-group">
+          <label>Filter by Driver</label>
+          <select id="tr-filter-driver" class="form-control">
+            <option value="">All Drivers</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Week Starting</label>
+          <input type="date" id="tr-filter-week" class="form-control">
+        </div>
+        <div class="form-group">
+          <label>Status</label>
+          <select id="tr-filter-status" class="form-control">
+            <option value="">All</option>
+            <option value="submitted">Submitted</option>
+            <option value="reviewed">Reviewed</option>
+            <option value="draft">Draft</option>
+          </select>
+        </div>
+        <div class="form-group" style="align-self:flex-end">
+          <button class="btn btn-outline" onclick="loadTransferReconReview()">Apply</button>
+        </div>
+      </div>
+      <div id="transfer-recon-list"><div class="spinner"></div></div>
+    </div>
+  </div>
   <div class="tab-panel" id="tab-checklists"><div class="card"><div class="card-title">Vehicle Checklists</div><div id="checklist-list"></div></div></div>
   <div class="tab-panel" id="tab-bookings-archive">
     <div class="card">
@@ -358,6 +417,18 @@
     </div>
     <input type="hidden" id="recon-detail-id">
     <div id="recon-detail-body"></div>
+  </div>
+</div>
+
+<!-- Transfer Recon Detail Modal -->
+<div class="modal-overlay" id="modal-transfer-recon-detail">
+  <div class="modal" style="max-width:720px">
+    <div class="modal-header">
+      <span class="modal-title">Transfer Recon Detail</span>
+      <button class="modal-close" onclick="closeModal('modal-transfer-recon-detail')">✕</button>
+    </div>
+    <input type="hidden" id="transfer-recon-detail-id">
+    <div id="transfer-recon-detail-body"></div>
   </div>
 </div>
 
