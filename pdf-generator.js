@@ -108,23 +108,33 @@ async function generateInspectionPDF(data, profile) {
   if (yPos < 200) { yPos = 200; }
 
   const embedSignature = async (base64, x, label) => {
+    const sigTimestamp = new Date().toLocaleString('en-ZA', { timeZone: 'Africa/Johannesburg' });
     try {
-      const sigImage = await pdfDoc.embedPng(base64);
-      const dims = sigImage.scale(0.25);
-      page.drawImage(sigImage, {
-        x: x,
-        y: yPos - 60,
-        width: dims.width,
-        height: dims.height,
-      });
-      page.drawLine({
-        start: { x: x, y: yPos - 65 },
-        end: { x: x + 150, y: yPos - 65 },
-        thickness: 1,
-      });
-      page.drawText(label, { x: x, y: yPos - 80, size: 10, font: boldFont });
-    } catch (e) {
-      console.error("Signature embed error:", e);
+      if (!base64 || typeof base64 !== 'string' || base64.length < 100) {
+        throw new Error('Invalid or empty signature data');
+      }
+      const pngPrefix = 'data:image/png;base64,';
+      const raw = base64.startsWith(pngPrefix) ? base64.slice(pngPrefix.length) : base64;
+      if (!raw || !/^[A-Za-z0-9+/=]+$/.test(raw.slice(0, 20))) {
+        throw new Error('Signature is not valid base64 PNG');
+      }
+      const binaryStr = atob(raw);
+      const bytes = new Uint8Array(binaryStr.length);
+      for (let i = 0; i < binaryStr.length; i++) bytes[i] = binaryStr.charCodeAt(i);
+      const sigImage = await pdfDoc.embedPng(bytes);
+      const scaleFactor = Math.min(0.25, 150 / Math.max(sigImage.width, 1));
+      const dims = sigImage.scale(scaleFactor);
+      page.drawImage(sigImage, { x, y: yPos - 60, width: dims.width, height: dims.height });
+      page.drawLine({ start: { x, y: yPos - 65 }, end: { x: x + 150, y: yPos - 65 }, thickness: 1 });
+      page.drawText(label, { x, y: yPos - 78, size: 10, font: boldFont });
+      page.drawText(`Signed: ${sigTimestamp}`, { x, y: yPos - 90, size: 7, font, color: rgb(0.4, 0.4, 0.4) });
+    } catch (sigErr) {
+      console.warn(`Signature embed skipped (${label}):`, sigErr.message);
+      page.drawRectangle({ x, y: yPos - 68, width: 150, height: 50, borderColor: rgb(0.7, 0.7, 0.7), borderWidth: 1 });
+      page.drawText('Signature on file', { x: x + 10, y: yPos - 40, size: 9, font, color: rgb(0.4, 0.4, 0.4) });
+      page.drawText(sigTimestamp, { x: x + 10, y: yPos - 53, size: 7.5, font, color: rgb(0.5, 0.5, 0.5) });
+      page.drawLine({ start: { x, y: yPos - 70 }, end: { x: x + 150, y: yPos - 70 }, thickness: 1 });
+      page.drawText(label, { x, y: yPos - 82, size: 10, font: boldFont });
     }
   };
 

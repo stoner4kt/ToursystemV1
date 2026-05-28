@@ -1,0 +1,244 @@
+You are implementing production-ready enhancements to a Inyathi Fleet Management PWA built with:
+- Supabase (PostgreSQL backend, Auth, Edge Functions)
+- Cloudinary (image/document storage)
+- Vercel (hosting)
+- Vanilla JavaScript frontend
+
+FEATURE 1: RECEIPT TRACKING & PAYMENT STATUS
+================================================
+Add a new field "Receipt Number" to the bookings form (below payment_status).
+- Database: Add `receipt_number TEXT UNIQUE NULL` column to public.bookings table
+- UI: Add input field in booking modal; make it non-required initially
+- Visual Status:
+  * Unpaid (receipt_number IS NULL): Show booking card/calendar item with red/orange background tint
+  * Paid (receipt_number IS NOT NULL): Show booking card with green background tint
+- Color scheme: Use CSS classes .booking-unpaid (red) and .booking-paid (green)
+- Admin-only: Only admins can add/edit receipt numbers
+
+Implementation file: admin.js (line ~250 in form-booking section)
+Update SQL: Add column with IF NOT EXISTS guard
+
+FEATURE 2: DOCUMENT PREVIEW IN BOOKING FORM
+=============================================
+Fix issue where uploaded documents (PDF, Word) aren't visible to admins in the booking form modal.
+- Create a "Documents Preview" section showing all uploaded booking_documents
+- Each document should display:
+  * Filename (clickable link to Cloudinary)
+  * File size
+  * Upload date/time
+  * Remove button (admin only)
+- Display images as thumbnails (max 100px height)
+- Display PDFs with file icon and file size
+- Implement lazy-loading for performance
+- Make section collapsible if 5+ documents
+
+Implementation: Extend renderBookingDocumentsList() in admin.js to show previews
+
+FEATURE 3: RECON SHEET EDIT WITH OTP APPROVAL
+==============================================
+Allow drivers to request edits to submitted recon sheets. Admin approves via OTP.
+
+Database changes:
+- Add to public.recon_sheets:
+  * edit_request_status TEXT DEFAULT 'none' (none|pending|approved|rejected)
+  * edit_request_reason TEXT
+  * edit_request_sent_at TIMESTAMPTZ
+  * edit_request_approved_by UUID REFERENCES profiles(id)
+  * edit_request_approved_at TIMESTAMPTZ
+  * edit_request_rejection_reason TEXT
+  
+- Create new table public.otp_verifications:
+  * id UUID PRIMARY KEY
+  * admin_id UUID REFERENCES profiles(id)
+  * resource_type TEXT (recon_edit|booking_edit|booking_delete)
+  * resource_id UUID
+  * otp_code TEXT (6 digits, hashed)
+  * created_at TIMESTAMPTZ DEFAULT NOW()
+  * expires_at TIMESTAMPTZ (15 minutes from creation)
+  * verified_at TIMESTAMPTZ
+  * attempts INT DEFAULT 0
+
+Flow:
+1. Driver (on driver-dashboard.html) clicks "Request Edit" on submitted recon
+2. Modal opens with reason field and list of editable fields (with checkboxes)
+3. Driver submits; backend sets edit_request_status='pending'
+4. Admin receives email notification with reason and edit list
+5. Admin approves by:
+   - Receiving email with "Approve Edit Request" button
+   - Clicking button opens admin panel
+   - System generates 6-digit OTP, sends to admin email
+   - Admin enters OTP in modal
+   - On successful OTP verification, edit_request_status='approved'
+   - Driver gets notification they can now edit
+6. Driver edits fields, resubmits
+7. Admin can reject request (sends notification with reason)
+
+Implementation files:
+- Create supabase/functions/send-otp-email/index.ts
+- Create supabase/functions/verify-otp/index.ts
+- Extend driver-dashboard.js with recon edit request UI
+- Extend admin.js with recon edit approval UI
+- Extend app.js with OTP verification helper
+
+FEATURE 4: VEHICLE MAINTENANCE ALERT EMAIL (2 DAYS BEFORE)
+==========================================================
+Send email notifications 2 days before vehicle is due back.
+- Integration: Use Resend API (free tier, 100/day)
+- Trigger: Automated via Supabase cron job (daily check at 6 AM UTC)
+
+Database:
+- Add to public.bookings:
+  * maintenance_alert_sent BOOLEAN DEFAULT false
+  * maintenance_alert_sent_at TIMESTAMPTZ
+
+Flow:
+1. Create supabase/functions/check-vehicle-maintenance/index.ts
+   - Runs daily via Supabase cron (pg_cron)
+   - Queries bookings where end_date = TODAY + 2
+   - For each booking, send email to all office members (admin + team leads)
+   - Email includes:
+     * Vehicle registration & model
+     * Driver name
+     * Pickup/dropoff locations
+     * Exact dates/times
+     * Action: "Arrange collection & delivery"
+   - Mark maintenance_alert_sent = true
+
+2. Optional Admin Manual Trigger:
+   - Add button in bookings-archive tab: "Send Maintenance Alert"
+   - Calls function immediately for selected booking
+   - Shows confirmation toast
+
+Email template (via Resend):
+Subject: "🚌 Vehicle Maintenance Alert: [REG] returning in 2 days"
+Body: Professional HTML with pickup/dropoff details, driver contact
+
+Implementation:
+- supabase/functions/check-vehicle-maintenance/index.ts
+- supabase/functions/send-maintenance-email/index.ts
+- admin.js: Add trigger button in bookings-archive
+- SQL: Enable pg_cron extension
+
+FEATURE 5: ITINERARY UPLOAD FIELD (DRIVER READ-ONLY)
+====================================================
+Rename "Documents" field to "Itinerary" in booking form. Control driver access.
+
+Database:
+- Add to public.bookings:
+  * itinerary_url TEXT (single URL, not array)
+  * itinerary_filename TEXT
+  * itinerary_uploaded_by UUID REFERENCES profiles(id)
+  * itinerary_uploaded_at TIMESTAMPTZ
+
+Changes:
+- Booking form modal: Rename "Booking Documents" section to "Itinerary"
+- Keep other booking_documents field for admin-only docs
+- Itinerary field: Admin upload only
+- Driver view: Show itinerary as downloadable link on their booking card
+- Drivers see itinerary in "My Tasks" tab under each booking
+
+Implementation:
+- admin.js: Separate itinerary upload from booking_documents
+- driver-dashboard.js: Display itinerary link in task cards
+- Update schema with new columns
+
+FEATURE 6: BOOKING EDIT/DELETE WITH OTP APPROVAL
+================================================
+Prevent direct editing/deletion. Require OTP verification.
+
+Flow for EDIT:
+1. Admin clicks "Edit" on saved booking
+2. Form opens with all fields
+3. Admin makes changes, clicks "Save"
+4. Modal appears: "Changes require OTP verification"
+5. System generates OTP, sends to admin email
+6. Admin enters OTP
+7. On success: booking updated, edit_log entry created
+8. On failure (3 attempts): Lock edit for 10 minutes
+
+Flow for DELETE:
+1. Admin clicks "Delete" on booking
+2. Confirmation modal: "This action requires OTP verification"
+3. Admin selects reason from dropdown:
+   - "Booking cancelled by client"
+   - "Administrative error"
+   - "Duplicate booking"
+   - "Other (please specify)"
+4. Admin submits; OTP email sent
+5. Same verification process as edit
+
+Database:
+- Add to public.bookings:
+  * is_locked BOOLEAN DEFAULT false
+  * locked_at TIMESTAMPTZ
+  * locked_reason TEXT
+  * last_modified_by UUID REFERENCES profiles(id)
+  * last_modified_at TIMESTAMPTZ
+  * modification_reason TEXT
+
+- Create public.booking_edit_log:
+  * id UUID PRIMARY KEY
+  * booking_id UUID REFERENCES bookings(id)
+  * admin_id UUID REFERENCES profiles(id)
+  * action TEXT (edit|delete)
+  * reason TEXT
+  * old_values JSONB
+  * new_values JSONB
+  * approved_at TIMESTAMPTZ
+  * created_at TIMESTAMPTZ
+
+Implementation:
+- admin.js: Intercept save/delete, trigger OTP flow
+- Create supabase/functions/approve-booking-change/index.ts
+- Store edit history for audit trail
+
+FEATURE 7: INSPECTION SIGNATURES DISPLAY
+========================================
+Ensure driver and client signatures are visible on inspection PDF downloads.
+
+Current state: Signatures saved as base64 in database
+Issue: PDF generation may not be rendering them
+
+Fix:
+- In pdf-generator.js, embedSignature() function:
+  * Validate base64 data before embedding
+  * Add error handling if signature is corrupted
+  * Add fallback text: "Signature on file [timestamp]"
+- Ensure signatures are embedded in correct position
+- Test with multiple browsers
+
+Implementation:
+- pdf-generator.js: Enhance embedSignature() error handling
+- inspection.js: Validate signature pads before submit
+
+FEATURE 8: DESKTOP LAYOUT CROP FIX
+=================================
+Fix right-side content being cropped on desktop views.
+
+Issue: Likely CSS grid layout or max-width constraint
+- Review .main max-width and padding
+- Check grid layout on 1025px+ breakpoint
+- Ensure sidebar doesn't overflow
+- Test at 1920x1080, 2560x1440
+
+Fix in style.css:
+- Adjust main { max-width } for desktop
+- Review grid-template-columns for body
+- Check overflow properties on sidebar
+- Ensure horizontal scrolling doesn't occur
+
+
+Run these implementations into the current system without changing nothing else ensuring that it stays production ready and functional
+
+PRODUCTION REQUIREMENTS:
+=======================
+- All functions must have error handling & logging
+- OTP codes must be cryptographically secure (use crypto module)
+- All emails must be tested before going live
+- Database migrations must be reversible
+- Rate limiting on OTP attempts (max 3 per 10 minutes)
+- Audit logging for all admin actions
+- CORS headers properly configured
+- Environment variables documented
+- TypeScript types for all functions
+- Unit tests for OTP generation/verification

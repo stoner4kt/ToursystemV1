@@ -194,6 +194,11 @@
         <button type="submit" class="btn btn-amber btn-full" style="padding:13px;font-size:1rem">Submit Recon Sheet</button>
       </form>
     </div>
+
+    <div class="card" style="margin-top:14px">
+      <div class="card-title">Previous Recon Sheets</div>
+      <div id="recon-history-list"><div class="spinner"></div></div>
+    </div>
   </div>
 
 
@@ -266,6 +271,25 @@
 </main>
 
 <div id="toast-container"></div>
+
+<!-- Recon Edit Request Modal (Feature 3) -->
+<div class="modal-overlay" id="modal-recon-edit-request">
+  <div class="modal">
+    <div class="modal-header">
+      <span class="modal-title">Request Recon Edit</span>
+      <button class="modal-close" onclick="closeModal('modal-recon-edit-request')">✕</button>
+    </div>
+    <input type="hidden" id="recon-edit-request-id">
+    <p style="font-size:.85rem;color:var(--text-muted);margin-bottom:14px;line-height:1.5">
+      Submitted recon sheets are locked. Your edit request will be sent to the admin for approval.
+    </p>
+    <div class="form-group">
+      <label>Reason for Edit Request <span class="required">*</span></label>
+      <textarea id="recon-edit-reason" class="form-control" rows="3" placeholder="Explain which fields need to be corrected and why…" required></textarea>
+    </div>
+    <button class="btn btn-amber btn-full" onclick="submitReconEditRequest()">Submit Request</button>
+  </div>
+</div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <script src="config.js"></script>

@@ -286,3 +286,86 @@ CREATE POLICY "transfer_recon_own_update" ON public.transfer_recon_sheets FOR UP
 CREATE POLICY "transfer_recon_admin" ON public.transfer_recon_sheets FOR ALL
   USING (public.is_admin())
   WITH CHECK (public.is_admin());
+
+-- ═══════════════════════════════════════════════════════════════
+-- FEATURE ADDITIONS (run these in Supabase SQL editor)
+-- ═══════════════════════════════════════════════════════════════
+
+-- 8a. FEATURE 1 — Receipt tracking on bookings
+ALTER TABLE public.bookings ADD COLUMN IF NOT EXISTS receipt_number TEXT;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_bookings_receipt_number
+  ON public.bookings(receipt_number) WHERE receipt_number IS NOT NULL;
+
+-- 8b. FEATURE 3 — Recon sheet edit-request workflow
+ALTER TABLE public.recon_sheets
+  ADD COLUMN IF NOT EXISTS edit_request_status TEXT DEFAULT 'none'
+    CHECK (edit_request_status IN ('none','pending','approved','rejected')),
+  ADD COLUMN IF NOT EXISTS edit_request_reason TEXT,
+  ADD COLUMN IF NOT EXISTS edit_request_sent_at TIMESTAMPTZ,
+  ADD COLUMN IF NOT EXISTS edit_request_approved_by UUID REFERENCES public.profiles(id),
+  ADD COLUMN IF NOT EXISTS edit_request_approved_at TIMESTAMPTZ,
+  ADD COLUMN IF NOT EXISTS edit_request_rejection_reason TEXT;
+
+-- 8c. FEATURE 3 & 6 — OTP verifications (hashed, 15-min expiry)
+CREATE TABLE IF NOT EXISTS public.otp_verifications (
+  id            UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+  admin_id      UUID        REFERENCES public.profiles(id),
+  resource_type TEXT        NOT NULL CHECK (resource_type IN ('recon_edit','booking_edit','booking_delete')),
+  resource_id   UUID        NOT NULL,
+  otp_hash      TEXT        NOT NULL,
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  expires_at    TIMESTAMPTZ NOT NULL DEFAULT (NOW() + INTERVAL '15 minutes'),
+  verified_at   TIMESTAMPTZ,
+  attempts      INT         NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS idx_otp_resource ON public.otp_verifications(resource_id, resource_type);
+CREATE INDEX IF NOT EXISTS idx_otp_expires  ON public.otp_verifications(expires_at);
+ALTER TABLE public.otp_verifications ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "otp_admin_all" ON public.otp_verifications
+  FOR ALL USING (public.is_admin()) WITH CHECK (public.is_admin());
+
+-- 8d. FEATURE 4 — Vehicle maintenance alert tracking
+ALTER TABLE public.bookings
+  ADD COLUMN IF NOT EXISTS maintenance_alert_sent    BOOLEAN     DEFAULT false,
+  ADD COLUMN IF NOT EXISTS maintenance_alert_sent_at TIMESTAMPTZ;
+
+-- 8e. FEATURE 5 — Itinerary per booking (admin uploads, driver reads)
+ALTER TABLE public.bookings
+  ADD COLUMN IF NOT EXISTS itinerary_url         TEXT,
+  ADD COLUMN IF NOT EXISTS itinerary_filename    TEXT,
+  ADD COLUMN IF NOT EXISTS itinerary_uploaded_at TIMESTAMPTZ;
+
+-- 8f. FEATURE 6 — Booking edit audit trail
+ALTER TABLE public.bookings
+  ADD COLUMN IF NOT EXISTS last_modified_at     TIMESTAMPTZ,
+  ADD COLUMN IF NOT EXISTS modification_reason  TEXT;
+
+CREATE TABLE IF NOT EXISTS public.booking_edit_log (
+  id          UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+  booking_id  UUID        NOT NULL REFERENCES public.bookings(id) ON DELETE CASCADE,
+  admin_id    UUID        REFERENCES public.profiles(id),
+  action      TEXT        NOT NULL CHECK (action IN ('edit','delete')),
+  reason      TEXT,
+  old_values  JSONB,
+  new_values  JSONB,
+  approved_at TIMESTAMPTZ,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_edit_log_booking ON public.booking_edit_log(booking_id);
+ALTER TABLE public.booking_edit_log ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "edit_log_admin" ON public.booking_edit_log
+  FOR ALL USING (public.is_admin()) WITH CHECK (public.is_admin());
+
+-- 8g. FEATURE 4 — Enable pg_cron for nightly maintenance-alert job
+-- Run the following manually in Supabase SQL editor (requires superuser):
+-- SELECT cron.schedule(
+--   'check-vehicle-maintenance',
+--   '0 6 * * *',
+--   $$
+--     SELECT net.http_post(
+--       url:='https://jxsesdcwdjrxydkvhpsh.supabase.co/functions/v1/check-vehicle-maintenance',
+--       headers:='{"Authorization":"Bearer SUPABASE_ANON_KEY","Content-Type":"application/json"}'::jsonb,
+--       body:='{}'::jsonb
+--     )
+--   $$
+-- );

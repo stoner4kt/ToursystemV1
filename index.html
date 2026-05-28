@@ -357,13 +357,42 @@
       </div>
       <div class="form-group"><label>Payment Status</label><select id="booking-payment-status" class="form-control"><option value="unpaid">Unpaid</option><option value="partially_paid">Partially Paid</option><option value="paid">Paid</option></select></div>
       <div class="form-group">
+        <label>Receipt Number <span style="font-size:.75rem;color:var(--text-muted);font-weight:400">(leave blank if unpaid)</span></label>
+        <input type="text" id="booking-receipt-number" class="form-control" placeholder="e.g. RCP-2025-001">
+      </div>
+      <div class="form-group">
         <label>Booking Documents</label>
         <input type="file" id="booking-documents-input" class="form-control" accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document" multiple>
         <div id="booking-documents-list" style="margin-top:8px;font-size:.82rem"></div>
       </div>
+      <div class="form-group">
+        <label>Itinerary <span style="font-size:.75rem;color:var(--text-muted);font-weight:400">(admin only — visible to assigned driver)</span></label>
+        <input type="file" id="booking-itinerary-input" class="form-control" accept=".pdf,.doc,.docx">
+        <div id="booking-itinerary-preview" style="margin-top:6px;font-size:.82rem"></div>
+      </div>
       <div id="booking-lock-notice" style="display:none;color:var(--red);font-weight:700">🔒 Booking is locked after completion.</div>
       <div style="display:flex;gap:8px"><button type="submit" class="btn btn-amber btn-full">Save Booking</button><button type="button" id="btn-mark-complete" class="btn btn-outline">Mark as Complete</button></div>
     </form>
+  </div>
+</div>
+
+<!-- OTP Verification Modal (Features 3 & 6) -->
+<div class="modal-overlay" id="modal-otp-verify">
+  <div class="modal" style="max-width:400px">
+    <div class="modal-header">
+      <span class="modal-title">🔐 Action Verification</span>
+      <button class="modal-close" onclick="cancelOTPVerification()">✕</button>
+    </div>
+    <p id="otp-modal-desc" style="font-size:.85rem;color:var(--text-muted);margin-bottom:16px;line-height:1.5">
+      A one-time password has been sent to the admin email address.
+    </p>
+    <div class="form-group">
+      <label>Enter 6-digit OTP <span class="required">*</span></label>
+      <input type="text" id="otp-input" class="form-control" maxlength="6" inputmode="numeric" pattern="\d{6}" placeholder="000000" autocomplete="one-time-code" style="letter-spacing:6px;text-align:center;font-size:1.6rem;font-weight:800">
+    </div>
+    <div id="otp-attempts-notice" style="display:none;color:var(--red);font-size:.82rem;margin-bottom:10px;font-weight:600"></div>
+    <button class="btn btn-amber btn-full" id="btn-verify-otp" onclick="submitOTPVerification()">Verify & Proceed</button>
+    <p style="font-size:.73rem;color:var(--text-muted);text-align:center;margin-top:10px">OTP valid for 15 minutes · Max 3 attempts</p>
   </div>
 </div>
 
