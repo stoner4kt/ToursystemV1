@@ -537,10 +537,17 @@ async function approveReconEditRequest(reconId) {
 async function rejectReconEditRequest(reconId, reason) {
   const rejReason = reason || prompt('Enter a reason for rejecting this edit request (optional):');
   try {
-    const { error } = await sb.from('recon_sheets').update({
+    let { error } = await sb.from('recon_sheets').update({
       edit_request_status:          'rejected',
       edit_request_rejection_reason: rejReason || null,
     }).eq('id', reconId);
+
+    if (error && error.message?.includes('edit_request_rejection_reason')) {
+      ({ error } = await sb.from('recon_sheets').update({
+        edit_request_status: 'rejected',
+      }).eq('id', reconId));
+    }
+
     if (error) throw error;
     toast('Edit request rejected', 'info');
     loadReconReview?.();

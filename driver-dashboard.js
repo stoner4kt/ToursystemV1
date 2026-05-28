@@ -394,7 +394,7 @@ async function loadReconHistory() {
   if (!container) return;
   const { data, error } = await sb
     .from('recon_sheets')
-    .select('id,week_start,week_end,status,submitted_at,edit_request_status,edit_request_reason,edit_request_rejection_reason')
+    .select('id,week_start,week_end,status,submitted_at,edit_request_status,edit_request_reason')
     .eq('driver_id', currentProfile.driver_id)
     .order('week_start', { ascending: false })
     .limit(10);
@@ -407,7 +407,7 @@ async function loadReconHistory() {
       : s.edit_request_status === 'approved'
       ? `<span style="color:var(--green);font-size:.78rem;font-weight:700">✓ Edit approved</span>`
       : s.edit_request_status === 'rejected'
-      ? `<span style="color:var(--red);font-size:.78rem" title="${s.edit_request_rejection_reason || ''}">✗ Request rejected</span>`
+      ? `<span style="color:var(--red);font-size:.78rem" title="Rejected by admin">✗ Request rejected</span>`
       : '';
     return `
     <div class="inspection-item">
