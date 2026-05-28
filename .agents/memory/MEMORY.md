@@ -1,0 +1,2 @@
+- [INYATHI project overview](project-overview.md) — static PWA (Vanilla JS/HTML/CSS), Supabase auth+DB, Cloudinary uploads, Vercel hosting; DO NOT migrate away from Supabase or add a Node.js server.
+- [8-feature implementation decisions](feature-decisions.md) — OTP_ENABLED flag guards booking/recon OTP flow; edge functions need RESEND_API_KEY secret + deployment before enabling.

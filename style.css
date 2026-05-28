@@ -795,3 +795,46 @@ tbody tr:nth-child(even) { background: rgba(240,244,248,.5); }
 @media (min-width: 1025px) {
   .main { padding-top: 28px; }
 }
+
+/* ── FEATURE 1: BOOKING PAYMENT STATUS COLOURS ─────────────── */
+.booking-paid   { background: #f0fdf4; border-left: 4px solid var(--green); padding-left: 8px; border-radius: var(--radius); }
+.booking-unpaid { background: #fff7ed; border-left: 4px solid var(--orange); padding-left: 8px; border-radius: var(--radius); }
+.cal-day.has-booking-unpaid::after { background: var(--orange); }
+.cal-day.has-booking-paid::after   { background: var(--green); }
+
+/* ── FEATURE 2: DOCUMENT PREVIEW ───────────────────────────── */
+.doc-preview-list { display: flex; flex-direction: column; gap: 8px; margin-top: 6px; }
+.doc-preview-item {
+  display: flex; align-items: center; gap: 10px;
+  padding: 8px 10px; border: 1.5px solid var(--border);
+  border-radius: var(--radius); background: var(--bg);
+  font-size: .82rem;
+}
+.doc-preview-item img { max-height: 60px; border-radius: 4px; object-fit: cover; flex-shrink: 0; }
+.doc-preview-icon { font-size: 1.8rem; flex-shrink: 0; line-height: 1; }
+.doc-preview-meta { flex: 1; min-width: 0; overflow: hidden; }
+.doc-preview-name { font-weight: 600; color: var(--navy-mid); display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.doc-preview-meta span { color: var(--text-muted); }
+
+/* ── FEATURE 8: DESKTOP LAYOUT CROP FIX ────────────────────── */
+@media (min-width: 1025px) {
+  #app-sidebar {
+    transform: translateX(0) !important;
+    box-shadow: 2px 0 12px rgba(0,0,0,.12);
+  }
+  .sidebar-overlay,
+  .sidebar-close,
+  .btn-icon[aria-label="Open menu"],
+  button.btn-icon:has(.hamburger-icon) { display: none !important; }
+
+  .app-header { padding-left: calc(var(--sidebar-w) + 16px); }
+
+  .main {
+    margin-left: var(--sidebar-w);
+    max-width: none;
+    padding: 28px 36px;
+    box-sizing: border-box;
+  }
+
+  .modal { max-width: 640px; }
+}

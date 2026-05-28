@@ -38,6 +38,7 @@ async function switchDriverTab(target) {
 
   document.querySelectorAll('#app-sidebar .sidebar-nav-link[data-tab]').forEach((l) => l.classList.remove('active'));
   document.querySelector(`#app-sidebar .sidebar-nav-link[data-tab="${target}"]`)?.classList.add('active');
+  if(target==='recon') await loadReconHistory();
   if(target==='checklists') await loadDriverChecklists();
   if(target==='incidents') await loadDriverIncidents();
   if(target==='documents') await loadMyDocuments();
@@ -123,6 +124,7 @@ function renderTaskList(containerId, bookings, emptyMsg) {
           <div style="margin-top:10px">
             <a href="inspection.html" class="btn btn-amber btn-sm">+ Start Inspection</a>
           </div>` : ''}
+        ${b.itinerary_url ? `<div style="margin-top:8px"><a href="${b.itinerary_url}" target="_blank" rel="noopener" class="btn btn-sm btn-outline">📋 View Itinerary</a></div>` : ''}
         ${canViewDocs ? `<div style="margin-top:8px"><button type="button" class="btn btn-sm btn-outline" onclick="toggleBookingDocuments('${b.id}')">📄 Documents (${docs.length})</button><div id="task-docs-${b.id}" style="display:none;margin-top:6px">${docs.map((d)=>`<div><a href="${d.url}" target="_blank" rel="noopener">${d.filename || 'Document'}</a></div>`).join('')}</div></div>` : ''}
         ${b.notes ? `<div style="font-size:.78rem;color:var(--text-muted);margin-top:6px">📝 ${b.notes}</div>` : ''}
       </div>`;
@@ -385,6 +387,74 @@ async function submitTransferRecon() {
   }
 }
 window.submitTransferRecon = submitTransferRecon;
+
+// ── RECON EDIT REQUEST (Feature 3) ────────────────────────────
+async function loadReconHistory() {
+  const container = document.getElementById('recon-history-list');
+  if (!container) return;
+  const { data, error } = await sb
+    .from('recon_sheets')
+    .select('id,week_start,week_end,status,submitted_at,edit_request_status,edit_request_reason,edit_request_rejection_reason')
+    .eq('driver_id', currentProfile.driver_id)
+    .order('week_start', { ascending: false })
+    .limit(10);
+  if (error) { container.innerHTML = `<p style="color:var(--red)">${error.message}</p>`; return; }
+  if (!data?.length) { container.innerHTML = `<div class="empty-state"><div class="empty-icon">📋</div><p>No recon sheets submitted yet.</p></div>`; return; }
+  container.innerHTML = data.map((s) => {
+    const canRequest = s.status === 'submitted' && (!s.edit_request_status || s.edit_request_status === 'none' || s.edit_request_status === 'rejected');
+    const editRequestBadge = s.edit_request_status === 'pending'
+      ? `<span style="color:var(--orange);font-size:.78rem;font-weight:700">⏳ Edit request pending</span>`
+      : s.edit_request_status === 'approved'
+      ? `<span style="color:var(--green);font-size:.78rem;font-weight:700">✓ Edit approved</span>`
+      : s.edit_request_status === 'rejected'
+      ? `<span style="color:var(--red);font-size:.78rem" title="${s.edit_request_rejection_reason || ''}">✗ Request rejected</span>`
+      : '';
+    return `
+    <div class="inspection-item">
+      <div style="flex:1;min-width:0">
+        <div class="inspection-title">Week: ${formatDate(s.week_start)} — ${formatDate(s.week_end)}</div>
+        <div class="inspection-meta">Submitted: ${s.submitted_at ? formatDate(s.submitted_at) : '—'}</div>
+        ${editRequestBadge ? `<div style="margin-top:4px">${editRequestBadge}</div>` : ''}
+      </div>
+      <div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px;flex-shrink:0">
+        ${statusBadge(s.status)}
+        ${canRequest ? `<button class="btn btn-sm btn-outline" style="font-size:.75rem" onclick="openReconEditRequest('${s.id}')">Request Edit</button>` : ''}
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function openReconEditRequest(reconId) {
+  const idEl = document.getElementById('recon-edit-request-id');
+  const reasonEl = document.getElementById('recon-edit-reason');
+  if (idEl) idEl.value = reconId;
+  if (reasonEl) reasonEl.value = '';
+  openModal('modal-recon-edit-request');
+}
+
+async function submitReconEditRequest() {
+  const reconId = document.getElementById('recon-edit-request-id')?.value;
+  const reason  = document.getElementById('recon-edit-reason')?.value.trim();
+  if (!reconId) return;
+  if (!reason) { toast('Please provide a reason for the edit request', 'error'); return; }
+
+  try {
+    const { error } = await sb.from('recon_sheets').update({
+      edit_request_status:  'pending',
+      edit_request_reason:  reason,
+      edit_request_sent_at: new Date().toISOString(),
+    }).eq('id', reconId).eq('driver_id', currentProfile.driver_id);
+    if (error) throw error;
+    toast('Edit request submitted — admin will review and approve', 'success');
+    closeModal('modal-recon-edit-request');
+    await loadReconHistory();
+  } catch (err) {
+    toast('Failed to submit request: ' + err.message, 'error');
+  }
+}
+
+window.openReconEditRequest   = openReconEditRequest;
+window.submitReconEditRequest = submitReconEditRequest;
 
 async function loadTransferReconHistory() {
   const container = document.getElementById('tr-history-list');

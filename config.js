@@ -23,6 +23,17 @@ const CONFIG = {
   // https://app.supabase.com → Edge Functions → fault-alert → URL
   FAULT_ALERT_FUNCTION_URL: 'https://jxsesdcwdjrxydkvhpsh.supabase.co/functions/v1/fault-alert',
 
+  // ── OTP Edge Functions (Features 3 & 6) ──────────────────
+  SEND_OTP_FUNCTION_URL:   'https://jxsesdcwdjrxydkvhpsh.supabase.co/functions/v1/send-otp-email',
+  VERIFY_OTP_FUNCTION_URL: 'https://jxsesdcwdjrxydkvhpsh.supabase.co/functions/v1/verify-otp',
+
+  // ── Maintenance Alert Edge Function (Feature 4) ───────────
+  MAINTENANCE_ALERT_FUNCTION_URL: 'https://jxsesdcwdjrxydkvhpsh.supabase.co/functions/v1/check-vehicle-maintenance',
+
+  // ── Feature Flags ─────────────────────────────────────────
+  // Set to true only after deploying OTP edge functions + RESEND_API_KEY secret
+  OTP_ENABLED: false,
+
   // ── Cloudflare Workers Webhooks (security + logging) ─────────────
   // Receives booking write events for downstream compliance logging.
   WORKER_BOOKINGS_WEBHOOK_URL: 'https://transroute-security.YOUR_ACCOUNT.workers.dev/bookings',
