@@ -129,11 +129,11 @@ function showBookingsForDate(dateStr, cell) {
     return;
   }
   container.innerHTML = dayBookings.map((b) => `
-    <div class="booking-item">
-      <div class="booking-dot" style="background:${b.status==='confirmed'?'var(--green)':b.status==='cancelled'?'var(--red)':'var(--amber)'}"></div>
+    <div class="booking-item ${b.receipt_number ? 'booking-paid' : 'booking-unpaid'}">
+      <div class="booking-dot" style="background:${b.receipt_number ? 'var(--green)' : b.status==='cancelled' ? 'var(--red)' : 'var(--orange)'}"></div>
       <div class="booking-info">
         <div class="booking-route">${b.client_name} — ${b.tour_reference || b.route || 'Tour Ref TBC'}</div>
-        <div class="booking-meta">${b.invoice_no} · ${b.assigned_driver_id || 'Unassigned'} · ${b.assigned_vehicle_reg || 'No vehicle'}</div>
+        <div class="booking-meta">${b.invoice_no} · ${b.assigned_driver_id || 'Unassigned'} · ${b.assigned_vehicle_reg || 'No vehicle'}${b.receipt_number ? ' · <span style="color:var(--green);font-weight:700">RCP: ' + b.receipt_number + '</span>' : ' · <span style="color:var(--orange);font-weight:600">Unpaid</span>'}</div>
       </div>
       <div style="display:flex;gap:6px;align-items:center;flex-shrink:0">
         ${statusBadge(b.status)}
@@ -177,25 +177,64 @@ function resetBookingForm() {
   document.getElementById('booking-vehicle').value     = '';
   document.getElementById('booking-status').value      = 'invoiced';
   document.getElementById('booking-payment-status').value = 'unpaid';
+  const receiptEl = document.getElementById('booking-receipt-number');
+  if (receiptEl) receiptEl.value = '';
   const notesInput = getBookingNotesInput();
   if (notesInput) notesInput.value = '';
   currentBookingDocuments = [];
   const docInput = document.getElementById('booking-documents-input');
   if (docInput) docInput.value = '';
+  const itinInput = document.getElementById('booking-itinerary-input');
+  if (itinInput) itinInput.value = '';
   renderBookingDocumentsList();
+  renderItineraryPreview(null);
 }
 function renderBookingDocumentsList() {
   const holder = document.getElementById('booking-documents-list');
   if (!holder) return;
   if (!currentBookingDocuments.length) {
-    holder.innerHTML = `<div style="color:var(--text-muted)">No documents attached.</div>`;
+    holder.innerHTML = `<div style="color:var(--text-muted);font-size:.82rem">No documents attached.</div>`;
     return;
   }
-  holder.innerHTML = currentBookingDocuments.map((d, i) => `<div style="display:flex;justify-content:space-between;gap:8px;border-bottom:1px solid var(--border);padding:4px 0">
-    <a href="${d.url || '#'}" target="_blank" rel="noopener">${d.filename || 'Document'}</a>
-    <span style="color:var(--text-muted)">${d.size ? `${Math.round(d.size / 1024)} KB` : '—'} · ${formatDateTime(d.uploaded_at)}</span>
-    <button type="button" class="btn btn-sm btn-danger" onclick="removeBookingDocument(${i})">🗑</button>
-  </div>`).join('');
+  const isAdmin = currentProfile?.role === 'admin';
+  const items = currentBookingDocuments.map((d, i) => {
+    const name = d.filename || 'Document';
+    const isPdf  = /\.pdf$/i.test(name);
+    const isImg  = /\.(jpg|jpeg|png|gif|webp)$/i.test(name);
+    const isWord = /\.(doc|docx)$/i.test(name);
+    const icon   = isPdf ? '📄' : isWord ? '📝' : isImg ? '' : '📎';
+    const preview = isImg
+      ? `<img src="${d.url}" loading="lazy" alt="${name}" style="max-height:60px;border-radius:4px;object-fit:cover;flex-shrink:0">`
+      : `<span class="doc-preview-icon">${icon}</span>`;
+    return `<div class="doc-preview-item">
+      ${preview}
+      <div class="doc-preview-meta">
+        <a href="${d.url || '#'}" target="_blank" rel="noopener" class="doc-preview-name">${name}</a>
+        <span>${d.size ? Math.round(d.size / 1024) + ' KB' : '—'} · ${d.uploaded_at ? formatDateTime(d.uploaded_at) : '—'}</span>
+      </div>
+      ${isAdmin ? `<button type="button" class="btn btn-sm btn-danger" onclick="removeBookingDocument(${i})" title="Remove document" style="flex-shrink:0">🗑</button>` : ''}
+    </div>`;
+  }).join('');
+
+  if (currentBookingDocuments.length >= 5) {
+    holder.innerHTML = `<details style="margin-top:4px"><summary style="cursor:pointer;font-weight:600;font-size:.82rem;padding:4px 0;color:var(--navy-mid)">📎 ${currentBookingDocuments.length} documents (click to expand)</summary><div class="doc-preview-list">${items}</div></details>`;
+  } else {
+    holder.innerHTML = `<div class="doc-preview-list">${items}</div>`;
+  }
+}
+
+function renderItineraryPreview(itinerary) {
+  const el = document.getElementById('booking-itinerary-preview');
+  if (!el) return;
+  if (!itinerary?.url) { el.innerHTML = ''; return; }
+  const isPdf = /\.pdf$/i.test(itinerary.filename || '');
+  el.innerHTML = `<div class="doc-preview-item">
+    <span class="doc-preview-icon">${isPdf ? '📄' : '📎'}</span>
+    <div class="doc-preview-meta">
+      <a href="${itinerary.url}" target="_blank" rel="noopener" class="doc-preview-name">${itinerary.filename || 'Itinerary'}</a>
+      <span>Current itinerary · Click to open</span>
+    </div>
+  </div>`;
 }
 function removeBookingDocument(i) {
   if (currentProfile?.role !== 'admin') return toast('Only admins can remove documents', 'error');
@@ -212,6 +251,8 @@ async function openEditBooking(id) {
   document.getElementById('booking-client').value     = data.client_name;
   document.getElementById('booking-tour-reference').value      = data.tour_reference || data.route || '';
   document.getElementById('booking-payment-status').value = data.payment_status || 'unpaid';
+  const receiptEl = document.getElementById('booking-receipt-number');
+  if (receiptEl) receiptEl.value = data.receipt_number || '';
   toggleBookingLockState(data);
   document.getElementById('booking-start-date').value = data.start_date;
   document.getElementById('booking-end-date').value   = data.end_date;
@@ -222,6 +263,7 @@ async function openEditBooking(id) {
   if (notesInput) notesInput.value = data.notes || '';
   currentBookingDocuments = Array.isArray(data.booking_documents) ? data.booking_documents : [];
   renderBookingDocumentsList();
+  renderItineraryPreview(data.itinerary_url ? { url: data.itinerary_url, filename: data.itinerary_filename } : null);
   document.getElementById('modal-booking-title').textContent = 'Edit Booking';
   openModal('modal-booking');
 }
@@ -243,6 +285,7 @@ document.getElementById('form-booking')?.addEventListener('submit', async (e) =>
     client_name:          document.getElementById('booking-client').value.trim(),
     tour_reference:       document.getElementById('booking-tour-reference').value.trim(),
     payment_status:       document.getElementById('booking-payment-status').value,
+    receipt_number:       document.getElementById('booking-receipt-number')?.value.trim() || null,
     start_date:           document.getElementById('booking-start-date').value,
     end_date:             document.getElementById('booking-end-date').value,
     assigned_driver_id:   document.getElementById('booking-driver').value  || null,
@@ -271,22 +314,33 @@ document.getElementById('form-booking')?.addEventListener('submit', async (e) =>
     }
   }
   payload.booking_documents = currentBookingDocuments;
+
+  const itineraryFile = document.getElementById('booking-itinerary-input')?.files?.[0];
+  if (itineraryFile) {
+    if (currentProfile?.role !== 'admin') return toast('Only admins can upload itineraries', 'error');
+    try {
+      toast('Uploading itinerary…', 'info');
+      const itinUrl = await uploadToCloudinary(itineraryFile, 'booking-itinerary');
+      payload.itinerary_url         = itinUrl;
+      payload.itinerary_filename    = itineraryFile.name;
+      payload.itinerary_uploaded_at = new Date().toISOString();
+    } catch (err) {
+      toast(`Itinerary upload failed: ${err.message}`, 'error');
+      return;
+    }
+  }
+
   const submitBtn = e.target.querySelector('[type="submit"]');
   submitBtn.disabled = true; submitBtn.textContent = 'Saving…';
 
-  const { data: bookingData, error } = id
-    ? await sb.from('bookings').update(payload).eq('id', id).select().single()
-    : await sb.from('bookings').insert(payload).select().single();
-
-  submitBtn.disabled = false; submitBtn.textContent = 'Save Booking';
-  if (error) {
-    toast('Error: ' + error.message + (error.message.includes('infinite recursion') ? ' — Check RLS policies.' : ''), 'error');
+  if (id && CONFIG.OTP_ENABLED) {
+    pendingBookingSave = { id, payload };
+    submitBtn.disabled = false; submitBtn.textContent = 'Save Booking';
+    await initiateBookingEditOTP(id, 'booking_edit');
     return;
   }
-  toast(id ? 'Booking updated' : 'Booking added', 'success');
-  await postToWorkerWebhook(CONFIG.WORKER_BOOKINGS_WEBHOOK_URL, bookingData || payload);
-  closeModal('modal-booking');
-  renderCalendar();
+
+  await performBookingSave(id, payload, submitBtn);
 });
 document.getElementById('archive-status-filter')?.addEventListener('change', loadBookingsArchive);
 document.getElementById('archive-from-date')?.addEventListener('change', loadBookingsArchive);
@@ -306,7 +360,23 @@ async function loadBookingsArchive() {
   if (to) rows = rows.filter(b => b.end_date <= to);
   tbody.innerHTML = rows.map((b) => {
     const docs = Array.isArray(b.booking_documents) ? b.booking_documents : [];
-    return `<tr><td>${b.invoice_no}</td><td>${b.client_name}</td><td>${b.assigned_driver_id || '—'}</td><td>${b.assigned_vehicle_reg || '—'}</td><td>${formatDate(b.start_date)}</td><td>${formatDate(b.end_date)}</td><td>${statusBadge(b.status)}</td><td>${docs.length ? `<span class="badge badge-blue">${docs.length} docs</span>` : '—'}</td><td><button class="btn btn-sm btn-outline" onclick="openEditBooking('${b.id}')">View Details</button> ${docs.length ? `<button class="btn btn-sm btn-amber" onclick="downloadBookingDocuments('${b.id}')">Download Documents</button>` : ''}</td></tr>`;
+    const receiptHtml = b.receipt_number
+      ? `<span style="color:var(--green);font-weight:700;font-size:.78rem">✓ ${b.receipt_number}</span>`
+      : `<span style="color:var(--orange);font-size:.78rem">Unpaid</span>`;
+    const alertBtn = !b.maintenance_alert_sent && b.status !== 'cancelled'
+      ? `<button class="btn btn-sm" style="background:var(--orange);color:#fff;margin-top:4px" title="Send vehicle return/maintenance alert email" onclick="sendMaintenanceAlertForBooking('${b.id}')">🔔 Alert</button>`
+      : b.maintenance_alert_sent ? `<span style="font-size:.73rem;color:var(--green)">✓ Alerted</span>` : '';
+    return `<tr>
+      <td>${b.invoice_no}<br>${receiptHtml}</td>
+      <td>${b.client_name}</td>
+      <td style="font-size:.8rem">${b.assigned_driver_id || '—'}</td>
+      <td>${b.assigned_vehicle_reg || '—'}</td>
+      <td>${formatDate(b.start_date)}</td>
+      <td>${formatDate(b.end_date)}<br>${alertBtn}</td>
+      <td>${statusBadge(b.status)}</td>
+      <td>${docs.length ? `<span class="badge badge-blue">${docs.length} docs</span>` : '—'}${b.itinerary_url ? '<br><a href="'+b.itinerary_url+'" target="_blank" style="font-size:.73rem">📋 Itinerary</a>' : ''}</td>
+      <td><button class="btn btn-sm btn-outline" onclick="openEditBooking('${b.id}')">View Details</button>${docs.length ? ` <button class="btn btn-sm btn-amber" onclick="downloadBookingDocuments('${b.id}')">Docs</button>` : ''}</td>
+    </tr>`;
   }).join('') || `<tr><td colspan="9">No bookings found.</td></tr>`;
 }
 async function downloadBookingDocuments(bookingId) {
@@ -319,6 +389,197 @@ window.downloadBookingDocuments = downloadBookingDocuments;
 async function deleteBooking() {
   toast('Bookings cannot be deleted (audit trail requirement).', 'warning');
 }
+
+// ── BOOKING OTP & SAVE LOGIC (Feature 6) ─────────────────────
+let pendingBookingSave = null;
+let currentOTPContext  = null;
+
+async function performBookingSave(id, payload, submitBtn) {
+  try {
+    const writePayload = id ? { ...payload, last_modified_at: new Date().toISOString() } : payload;
+    const { data: bookingData, error } = id
+      ? await sb.from('bookings').update(writePayload).eq('id', id).select().single()
+      : await sb.from('bookings').insert(writePayload).select().single();
+
+    if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = 'Save Booking'; }
+    if (error) {
+      toast('Error: ' + error.message + (error.message.includes('infinite recursion') ? ' — Check RLS policies.' : ''), 'error');
+      return;
+    }
+    if (id) {
+      await sb.from('booking_edit_log').insert({
+        booking_id: id, admin_id: currentProfile?.id,
+        action: 'edit', new_values: payload, approved_at: new Date().toISOString(),
+      }).then(() => {});
+    }
+    toast(id ? 'Booking updated' : 'Booking added', 'success');
+    await postToWorkerWebhook(CONFIG.WORKER_BOOKINGS_WEBHOOK_URL, bookingData || payload);
+    closeModal('modal-booking');
+    renderCalendar();
+  } catch (err) {
+    if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = 'Save Booking'; }
+    toast('Save failed: ' + err.message, 'error');
+  }
+}
+
+async function initiateBookingEditOTP(resourceId, resourceType) {
+  try {
+    toast('Sending OTP to admin email…', 'info');
+    const res = await fetch(CONFIG.SEND_OTP_FUNCTION_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${CONFIG.SUPABASE_ANON_KEY}` },
+      body: JSON.stringify({
+        resource_type:  resourceType,
+        resource_id:    resourceId,
+        admin_id:       currentProfile?.id,
+        context_label:  resourceType === 'booking_edit' ? 'Booking Edit' : 'Booking Delete',
+      }),
+    });
+    const result = await res.json();
+    if (!res.ok) { toast(result.error || 'Failed to send OTP', 'error'); return; }
+    const descEl = document.getElementById('otp-modal-desc');
+    if (descEl) descEl.textContent = `An OTP has been sent to ${CONFIG.ADMIN_EMAIL}. Enter it below to confirm this change.`;
+    const codeEl = document.getElementById('otp-input');
+    if (codeEl) codeEl.value = '';
+    const noticeEl = document.getElementById('otp-attempts-notice');
+    if (noticeEl) noticeEl.style.display = 'none';
+    currentOTPContext = { resourceId, resourceType };
+    openModal('modal-otp-verify');
+  } catch (err) {
+    toast('OTP request failed: ' + err.message, 'error');
+  }
+}
+
+async function submitOTPVerification() {
+  const code = document.getElementById('otp-input')?.value.trim();
+  if (!code || code.length !== 6) { toast('Enter the 6-digit OTP code', 'error'); return; }
+  if (!currentOTPContext) { toast('No pending action — please try again', 'error'); return; }
+  const btn = document.getElementById('btn-verify-otp');
+  if (btn) { btn.disabled = true; btn.textContent = 'Verifying…'; }
+  try {
+    const res = await fetch(CONFIG.VERIFY_OTP_FUNCTION_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${CONFIG.SUPABASE_ANON_KEY}` },
+      body: JSON.stringify({ resource_type: currentOTPContext.resourceType, resource_id: currentOTPContext.resourceId, otp_code: code }),
+    });
+    const result = await res.json();
+    if (!result.verified) {
+      const noticeEl = document.getElementById('otp-attempts-notice');
+      if (noticeEl) { noticeEl.textContent = result.error || 'Incorrect OTP.'; noticeEl.style.display = 'block'; }
+      toast(result.error || 'Incorrect OTP', 'error');
+      return;
+    }
+    closeModal('modal-otp-verify');
+    toast('OTP verified — saving…', 'success');
+    if (pendingBookingSave) {
+      const { id, payload } = pendingBookingSave;
+      pendingBookingSave = null;
+      currentOTPContext  = null;
+      await performBookingSave(id, payload, null);
+    } else if (currentOTPContext?.resourceType === 'recon_edit') {
+      await approveReconEditRequest(currentOTPContext.resourceId);
+      currentOTPContext = null;
+    }
+  } catch (err) {
+    toast('Verification error: ' + err.message, 'error');
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = 'Verify & Proceed'; }
+  }
+}
+
+function cancelOTPVerification() {
+  pendingBookingSave = null;
+  currentOTPContext  = null;
+  closeModal('modal-otp-verify');
+  toast('Action cancelled', 'info');
+}
+
+window.submitOTPVerification = submitOTPVerification;
+window.cancelOTPVerification = cancelOTPVerification;
+
+// ── MAINTENANCE ALERT (Feature 4) ─────────────────────────────
+async function sendMaintenanceAlertForBooking(bookingId) {
+  if (!confirm('Send a vehicle return/maintenance alert email for this booking?')) return;
+  try {
+    toast('Sending maintenance alert…', 'info');
+    const res = await fetch(CONFIG.MAINTENANCE_ALERT_FUNCTION_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${CONFIG.SUPABASE_ANON_KEY}` },
+      body: JSON.stringify({ booking_id: bookingId }),
+    });
+    const result = await res.json();
+    if (!res.ok || !result.success) { toast(result.error || 'Alert failed', 'error'); return; }
+    toast('Maintenance alert sent successfully', 'success');
+    loadBookingsArchive();
+  } catch (err) {
+    toast('Alert error: ' + err.message, 'error');
+  }
+}
+window.sendMaintenanceAlertForBooking = sendMaintenanceAlertForBooking;
+
+// ── RECON EDIT APPROVAL (Feature 3) ───────────────────────────
+async function approveReconEditRequest(reconId) {
+  try {
+    const { error } = await sb.from('recon_sheets').update({
+      edit_request_status:      'approved',
+      edit_request_approved_by: currentProfile?.id,
+      edit_request_approved_at: new Date().toISOString(),
+      status:                   'draft',
+    }).eq('id', reconId);
+    if (error) throw error;
+    toast('Recon edit request approved — driver can now re-submit', 'success');
+    loadReconReview?.();
+  } catch (err) {
+    toast('Approval failed: ' + err.message, 'error');
+  }
+}
+
+async function rejectReconEditRequest(reconId, reason) {
+  const rejReason = reason || prompt('Enter a reason for rejecting this edit request (optional):');
+  try {
+    const { error } = await sb.from('recon_sheets').update({
+      edit_request_status:          'rejected',
+      edit_request_rejection_reason: rejReason || null,
+    }).eq('id', reconId);
+    if (error) throw error;
+    toast('Edit request rejected', 'info');
+    loadReconReview?.();
+  } catch (err) {
+    toast('Rejection failed: ' + err.message, 'error');
+  }
+}
+
+async function initiateReconEditApprovalOTP(reconId) {
+  if (!CONFIG.OTP_ENABLED) {
+    if (confirm('Approve this recon edit request without OTP (OTP is disabled)?')) {
+      await approveReconEditRequest(reconId);
+    }
+    return;
+  }
+  try {
+    toast('Sending OTP to admin email…', 'info');
+    const res = await fetch(CONFIG.SEND_OTP_FUNCTION_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${CONFIG.SUPABASE_ANON_KEY}` },
+      body: JSON.stringify({ resource_type: 'recon_edit', resource_id: reconId, admin_id: currentProfile?.id, context_label: 'Recon Edit Approval' }),
+    });
+    const result = await res.json();
+    if (!res.ok) { toast(result.error || 'Failed to send OTP', 'error'); return; }
+    const descEl = document.getElementById('otp-modal-desc');
+    if (descEl) descEl.textContent = `OTP sent to ${CONFIG.ADMIN_EMAIL}. Verify to approve the driver's recon edit request.`;
+    const codeEl = document.getElementById('otp-input');
+    if (codeEl) codeEl.value = '';
+    const noticeEl = document.getElementById('otp-attempts-notice');
+    if (noticeEl) noticeEl.style.display = 'none';
+    currentOTPContext = { resourceId: reconId, resourceType: 'recon_edit' };
+    openModal('modal-otp-verify');
+  } catch (err) {
+    toast('OTP request failed: ' + err.message, 'error');
+  }
+}
+
+window.initiateReconEditApprovalOTP = initiateReconEditApprovalOTP;
+window.rejectReconEditRequest       = rejectReconEditRequest;
 
 // ── FLEET MANAGEMENT ─────────────────────────────────────────
 async function loadFleet() {
@@ -617,18 +878,27 @@ async function loadReconReview() {
     container.innerHTML = `<div class="empty-state"><div class="empty-icon">📊</div><p>No recon sheets submitted yet.</p></div>`;
     return;
   }
-  container.innerHTML = data.map((sheet) => `
+  container.innerHTML = data.map((sheet) => {
+    const hasPendingEdit = sheet.edit_request_status === 'pending';
+    const editBadge = hasPendingEdit
+      ? `<span style="color:var(--orange);font-weight:700;font-size:.78rem">⚠ Edit Request Pending</span>`
+      : sheet.edit_request_status === 'approved' ? `<span style="color:var(--green);font-size:.78rem">Edit Approved</span>`
+      : sheet.edit_request_status === 'rejected' ? `<span style="color:var(--red);font-size:.78rem">Edit Rejected</span>` : '';
+    return `
     <div class="inspection-item" onclick="openReconDetail('${sheet.id}')">
       <div style="flex:1;min-width:0">
         <div class="inspection-title">${sheet.profiles?.name || sheet.driver_id} · ${sheet.week_start} → ${sheet.week_end}</div>
         <div class="inspection-meta">Ref: ${sheet.tour_reference || '—'} · Vehicle: ${sheet.vehicle_reg || '—'} · Distance: ${sheet.total_distance_km ?? 0} km</div>
-        <div class="inspection-fault-count" style="color:var(--navy-mid)">Status: ${statusBadge(sheet.status || 'submitted')}</div>
+        <div style="margin-top:3px">${statusBadge(sheet.status || 'submitted')}${editBadge ? '&nbsp;&nbsp;' + editBadge : ''}</div>
+        ${hasPendingEdit ? `<div style="font-size:.78rem;color:var(--text-muted);margin-top:3px">Reason: ${sheet.edit_request_reason || '—'}</div>` : ''}
       </div>
-      <div style="display:flex;gap:8px;flex-shrink:0">
+      <div style="display:flex;gap:8px;flex-shrink:0;flex-direction:column;align-items:flex-end">
         <button class="btn btn-sm btn-outline" onclick="event.stopPropagation();openReconDetail('${sheet.id}')">View</button>
+        ${hasPendingEdit ? `<button class="btn btn-sm btn-amber" onclick="event.stopPropagation();initiateReconEditApprovalOTP('${sheet.id}')" title="Approve edit request via OTP">Approve Edit</button><button class="btn btn-sm btn-danger" style="font-size:.73rem" onclick="event.stopPropagation();rejectReconEditRequest('${sheet.id}')">Reject</button>` : ''}
         <button class="btn btn-sm btn-amber" onclick="event.stopPropagation();downloadReconPDF('${sheet.id}')">PDF</button>
       </div>
-    </div>`).join('');
+    </div>`;
+  }).join('');
 }
 
 async function openReconDetail(id) {

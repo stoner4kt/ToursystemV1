@@ -797,125 +797,45 @@ tbody tr:nth-child(even) { background: rgba(240,244,248,.5); }
   .main { padding-top: 28px; }
 }
 
+/* ── FEATURE 1: BOOKING PAYMENT STATUS COLOURS ─────────────── */
+.booking-paid   { background: #f0fdf4; border-left: 4px solid var(--green); padding-left: 8px; border-radius: var(--radius); }
+.booking-unpaid { background: #fff7ed; border-left: 4px solid var(--orange); padding-left: 8px; border-radius: var(--radius); }
+.cal-day.has-booking-unpaid::after { background: var(--orange); }
+.cal-day.has-booking-paid::after   { background: var(--green); }
 
-/* ============================================================
-   Responsive audit fixes (mobile-first: 320+, 481+, 768+, 1025+)
-   ============================================================ */
+/* ── FEATURE 2: DOCUMENT PREVIEW ───────────────────────────── */
+.doc-preview-list { display: flex; flex-direction: column; gap: 8px; margin-top: 6px; }
+.doc-preview-item {
+  display: flex; align-items: center; gap: 10px;
+  padding: 8px 10px; border: 1.5px solid var(--border);
+  border-radius: var(--radius); background: var(--bg);
+  font-size: .82rem;
+}
+.doc-preview-item img { max-height: 60px; border-radius: 4px; object-fit: cover; flex-shrink: 0; }
+.doc-preview-icon { font-size: 1.8rem; flex-shrink: 0; line-height: 1; }
+.doc-preview-meta { flex: 1; min-width: 0; overflow: hidden; }
+.doc-preview-name { font-weight: 600; color: var(--navy-mid); display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.doc-preview-meta span { color: var(--text-muted); }
 
-/* Base mobile safeguards */
-.main, .card, .modal, .login-card, .app-header, .tab-nav, .table-wrapper {
-  width: 100%;
-}
-.tab-nav {
-  overflow-x: auto;
-  overscroll-behavior-x: contain;
-}
-.tab-btn {
-  min-width: 96px;
-  min-height: 44px;
-  flex: 0 0 auto;
-}
-.form-row { grid-template-columns: 1fr; }
-.btn, .btn-sm, .btn-icon, .chk-btn, .form-control, .login-input, .sidebar-close, .modal-close {
-  min-height: 44px;
-}
-.btn-icon, .sidebar-close, .modal-close {
-  min-width: 44px;
-}
-.table-wrapper {
-  overflow-x: auto;
-  overflow-y: hidden;
-}
-table { min-width: 100%; }
-.login-bg { padding: 14px; }
-.login-card {
-  max-width: 100%;
-  padding: 24px 16px;
-  border-radius: 14px;
-}
-.media-preview { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-.inspection-progress { grid-template-columns: 1fr; }
-.checklist-item { align-items: flex-start; }
-.checklist-buttons { flex-wrap: wrap; }
-.modal-overlay {
-  align-items: flex-end;
-  padding: 0;
-}
-.modal {
-  max-width: 100%;
-  min-height: 100dvh;
-  max-height: 100dvh;
-  border-radius: 14px 14px 0 0;
-  padding: 16px;
-}
-
-/* Tablet portrait/small landscape */
-@media (min-width: 481px) {
-  .main { padding: 18px; }
-  .app-header { padding: 0 18px; }
-  .header-actions { gap: 10px; }
-  .form-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .stats-row { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-  .modal-overlay { align-items: center; padding: 14px; }
-  .modal {
-    min-height: auto;
-    max-height: 92dvh;
-    border-radius: 16px;
-    max-width: 640px;
-    padding: 20px;
-  }
-  .cal-grid { gap: 4px; }
-  .tab-btn { min-width: 110px; }
-}
-
-/* Tablet landscape / medium screens */
-@media (min-width: 768px) {
-  .main { max-width: 980px; padding: 20px; }
-  .login-card { max-width: 430px; padding: 40px 30px; }
-  .media-preview { grid-template-columns: repeat(4, minmax(0, 1fr)); }
-}
-
-/* Desktop and large screens */
+/* ── FEATURE 8: DESKTOP LAYOUT CROP FIX ────────────────────── */
 @media (min-width: 1025px) {
-  body {
-    display: grid;
-    grid-template-columns: var(--sidebar-w) minmax(0, 1fr);
-    grid-template-areas: "side head" "side content";
-    align-items: start;
-  }
   #app-sidebar {
-    position: sticky;
-    top: 0;
-    height: 100dvh;
-    transform: translateX(0);
+    transform: translateX(0) !important;
+    box-shadow: 2px 0 12px rgba(0,0,0,.12);
   }
-  .sidebar-overlay, #sidebar-toggle, .sidebar-close { display: none !important; }
-  .app-header {
-    grid-area: head;
-    top: 0;
-    width: 100%;
-  }
-  .main {
-    grid-area: content;
-    max-width: 1240px;
-    padding: 24px;
-  }
-  .stats-row { grid-template-columns: repeat(4, minmax(0, 1fr)); }
-  .media-preview { grid-template-columns: repeat(5, minmax(0, 1fr)); }
-  .modal-overlay { align-items: center; padding: 24px; }
-  .modal {
-    max-width: 720px;
-    width: min(720px, 100%);
-    min-height: auto;
-    border-radius: 16px;
-  }
-  table { min-width: 0; }
-}
+  .sidebar-overlay,
+  .sidebar-close,
+  .btn-icon[aria-label="Open menu"],
+  button.btn-icon:has(.hamburger-icon) { display: none !important; }
 
-/* Orientation and motion-smoothness safety */
-@media (orientation: landscape) and (max-width: 1024px) {
-  .modal { max-height: 96dvh; }
-}
-@media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after { transition-duration: 0.01ms !important; animation-duration: 0.01ms !important; }
+  .app-header { padding-left: calc(var(--sidebar-w) + 16px); }
+
+  .main {
+    margin-left: var(--sidebar-w);
+    max-width: none;
+    padding: 28px 36px;
+    box-sizing: border-box;
+  }
+
+  .modal { max-width: 640px; }
 }
