@@ -375,3 +375,69 @@ CREATE POLICY "edit_log_admin" ON public.booking_edit_log
 --     )
 --   $$
 -- );
+
+-- ══════════════════════════════════════════════════════════════
+-- VEHICLE EXPENSES & DAMAGES MODULE
+-- ══════════════════════════════════════════════════════════════
+
+CREATE TABLE IF NOT EXISTS public.vehicle_expenses (
+  id                  UUID          PRIMARY KEY DEFAULT gen_random_uuid(),
+  vehicle_reg         TEXT          NOT NULL REFERENCES public.vehicles(registration_no) ON DELETE RESTRICT,
+  driver_id           TEXT          REFERENCES public.profiles(driver_id),         -- NULL when admin logs directly
+  logged_by_admin_id  UUID          REFERENCES public.profiles(id),                -- NULL when driver submits
+  expense_type        TEXT          NOT NULL
+                                    CHECK (expense_type IN ('Tyres','Service','Damage','Repair','Accident','Other')),
+  description         TEXT,
+  amount              NUMERIC(12,2) NOT NULL DEFAULT 0 CHECK (amount >= 0),
+  expense_date        DATE          NOT NULL,
+  -- Cloudinary uploads stored as JSONB arrays:
+  -- Each element: { url TEXT, filename TEXT, size INT, resource_type TEXT, uploaded_at TIMESTAMPTZ }
+  document_urls       JSONB         NOT NULL DEFAULT '[]',
+  photo_urls          JSONB         NOT NULL DEFAULT '[]',
+  status              TEXT          NOT NULL DEFAULT 'pending'
+                                    CHECK (status IN ('pending','approved','rejected')),
+  submitted_at        TIMESTAMPTZ   NOT NULL DEFAULT NOW(),
+  -- Admin approval fields
+  reviewed_by         UUID          REFERENCES public.profiles(id),
+  reviewed_at         TIMESTAMPTZ,
+  rejection_reason    TEXT,
+  -- Notification tracking
+  alert_sent          BOOLEAN       NOT NULL DEFAULT false,
+  driver_notified_at  TIMESTAMPTZ,
+  created_at          TIMESTAMPTZ   NOT NULL DEFAULT NOW(),
+  updated_at          TIMESTAMPTZ   NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_expenses_vehicle  ON public.vehicle_expenses(vehicle_reg);
+CREATE INDEX IF NOT EXISTS idx_expenses_driver   ON public.vehicle_expenses(driver_id);
+CREATE INDEX IF NOT EXISTS idx_expenses_status   ON public.vehicle_expenses(status);
+CREATE INDEX IF NOT EXISTS idx_expenses_date     ON public.vehicle_expenses(expense_date DESC);
+CREATE INDEX IF NOT EXISTS idx_expenses_created  ON public.vehicle_expenses(created_at DESC);
+
+CREATE TRIGGER trg_expenses_updated_at
+  BEFORE UPDATE ON public.vehicle_expenses
+  FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
+
+ALTER TABLE public.vehicle_expenses ENABLE ROW LEVEL SECURITY;
+
+-- Drivers: read own records only
+CREATE POLICY "expenses_driver_select" ON public.vehicle_expenses FOR SELECT
+  USING (driver_id = (SELECT driver_id FROM public.profiles WHERE id = auth.uid()));
+
+-- Drivers: insert own records only (status forced to 'pending' by app logic)
+CREATE POLICY "expenses_driver_insert" ON public.vehicle_expenses FOR INSERT
+  WITH CHECK (driver_id = (SELECT driver_id FROM public.profiles WHERE id = auth.uid()));
+
+-- Admins: full access
+CREATE POLICY "expenses_admin_all" ON public.vehicle_expenses FOR ALL
+  USING (public.is_admin())
+  WITH CHECK (public.is_admin());
+
+-- Also extend otp_verifications resource_type check to include 'expense_approval'
+-- Run this only if the CHECK constraint can be altered; otherwise the edge functions handle validation
+ALTER TABLE public.otp_verifications
+  DROP CONSTRAINT IF EXISTS otp_verifications_resource_type_check;
+
+ALTER TABLE public.otp_verifications
+  ADD CONSTRAINT otp_verifications_resource_type_check
+  CHECK (resource_type IN ('recon_edit','booking_edit','booking_delete','expense_approval'));
