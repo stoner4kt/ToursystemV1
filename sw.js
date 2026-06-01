@@ -1,17 +1,19 @@
 // ============================================================
 //  TRANSROUTE PWA — SERVICE WORKER
 // ============================================================
-const CACHE_NAME   = 'transroute-v1';
+const CACHE_NAME   = 'transroute-v2';
 const SYNC_TAG     = 'sync-inspections';
 
 const STATIC_ASSETS = [
   '/login.html',
   '/index.html',
+  '/driver-dashboard.html',
   '/inspection.html',
   '/style.css',
   '/config.js',
   '/app.js',
   '/admin.js',
+  '/driver-dashboard.js',
   '/inspection.js',
   '/manifest.json',
   'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js',

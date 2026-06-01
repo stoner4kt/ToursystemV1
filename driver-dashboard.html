@@ -66,6 +66,11 @@
         <span class="sidebar-nav-icon">📁</span> My Documents
       </button>
     </div>
+    <div class="sidebar-nav-item">
+      <button class="sidebar-nav-link" data-tab="fines" onclick="switchDriverTab('fines')">
+        <span class="sidebar-nav-icon">🚦</span> My Fines
+      </button>
+    </div>
   </div>
   <div class="sidebar-footer">
     <button class="sidebar-logout" id="btn-signout">
@@ -105,6 +110,7 @@
   <button class="tab-btn" data-tab="incidents" id="tab-btn-incidents">🚨 Incident Reports</button>
   <button class="tab-btn" data-tab="transfer-recon" id="tab-btn-transfer-recon">📝 Transfer Recon</button>
   <button class="tab-btn" data-tab="documents" id="tab-btn-documents">📁 My Documents</button>
+  <button class="tab-btn" data-tab="fines" id="tab-btn-fines">🚦 My Fines</button>
 </nav>
 
 <!-- ── MAIN ──────────────────────────────────────────────────── -->
@@ -209,6 +215,19 @@
 
   <div class="tab-panel" id="tab-checklists"><div class="card"><div class="card-title">Vehicle Checklists</div><form id="checklist-form"><input type="date" id="checklist-date" class="form-control" readonly><select id="checklist-vehicle" class="form-control"></select><div id="checklist-items"></div><textarea id="checklist-notes" class="form-control" placeholder="Notes..."></textarea><input type="file" accept=".pdf" id="checklist-pdf-input" class="form-control"><button class="btn btn-amber btn-full" type="submit">Submit Checklist</button></form><div id="checklist-history"></div></div></div>
   <div class="tab-panel" id="tab-incidents"><div class="card"><div class="card-title">Incident Reports</div><form id="incident-form"><select id="incident-booking" class="form-control"></select><input type="text" id="incident-type" class="form-control" placeholder="Type"><textarea id="incident-description" class="form-control" placeholder="Description"></textarea><input type="text" id="incident-location" class="form-control" placeholder="Location"><label><input type="checkbox" id="incident-injuries"> Injuries Involved</label><input type="file" accept="image/*" multiple id="incident-photos" class="form-control"><input type="file" accept=".pdf" id="incident-pdf" class="form-control"><button class="btn btn-amber btn-full" type="submit">Submit Incident</button></form><div id="incident-history"></div></div></div>
+  <div class="tab-panel" id="tab-fines">
+    <div class="card">
+      <div class="card-header">
+        <div>
+          <div class="card-title">My Traffic Fines</div>
+          <div class="card-subtitle">Only fines logged to your driver profile are shown here.</div>
+        </div>
+        <button type="button" class="btn btn-outline btn-sm" onclick="loadDriverFines()">Refresh</button>
+      </div>
+      <div id="driver-fines-list"><div class="spinner"></div></div>
+    </div>
+  </div>
+
   <!-- ═══ TRANSFER RECON TAB ═══ -->
   <div class="tab-panel" id="tab-transfer-recon">
     <div class="card">

@@ -41,6 +41,7 @@ function switchTab(target) {
   if (target === 'checklists') loadVehicleChecklists();
   if (target === 'transfer-recon') loadTransferReconReview();
   if (target === 'reports')  loadReports();
+  if (target === 'traffic-fines') initTrafficFinesDashboard();
   if (target === 'bookings-archive')  loadBookingsArchive();
 }
 
@@ -1368,3 +1369,198 @@ async function downloadTransferReconPDF(id) {
   toast('Transfer Recon PDF downloaded', 'success');
 }
 window.downloadTransferReconPDF = downloadTransferReconPDF;
+
+// ── TRAFFIC FINES DASHBOARD ──────────────────────────────────
+let currentFineLookupMatch = null;
+let fineDashboardLoaded = false;
+
+function fineEscapeHtml(value) {
+  return String(value ?? '')
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#039;');
+}
+
+function fineDateTimeLocalToIso(value) {
+  if (!value) return null;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date.toISOString();
+}
+
+function formatMoney(amount) {
+  if (amount === null || amount === undefined || amount === '') return '—';
+  const numeric = Number(amount);
+  return Number.isFinite(numeric) ? `R ${numeric.toFixed(2)}` : fineEscapeHtml(amount);
+}
+
+async function initTrafficFinesDashboard() {
+  if (fineDashboardLoaded) {
+    await loadAdminTrafficFines();
+    return;
+  }
+  fineDashboardLoaded = true;
+  await loadFineVehicleOptions();
+  await loadAdminTrafficFines();
+}
+
+async function loadFineVehicleOptions() {
+  const select = document.getElementById('fine-vehicle');
+  if (!select) return;
+  const { data, error } = await sb.from('vehicles').select('id,registration_no,model').order('registration_no');
+  if (error) {
+    select.innerHTML = '<option value="">Unable to load vehicles</option>';
+    toast(error.message, 'error');
+    return;
+  }
+  select.innerHTML = '<option value="">Select vehicle…</option>' + (data || []).map((v) => (
+    `<option value="${fineEscapeHtml(v.registration_no)}">${fineEscapeHtml(v.registration_no)} — ${fineEscapeHtml(v.model || 'Vehicle')}</option>`
+  )).join('');
+}
+
+async function lookupDriverByFineTimeDashboard(event) {
+  event?.preventDefault();
+  const vehicleId = document.getElementById('fine-vehicle')?.value?.trim();
+  const timestampInput = document.getElementById('fine-timestamp')?.value;
+  const fineTimestamp = fineDateTimeLocalToIso(timestampInput);
+  const resultBox = document.getElementById('fine-lookup-result');
+  const logCard = document.getElementById('fine-log-card');
+  currentFineLookupMatch = null;
+  if (logCard) logCard.style.display = 'none';
+
+  if (!vehicleId || !fineTimestamp) {
+    if (resultBox) resultBox.innerHTML = '<div class="empty-state"><div class="empty-icon">⚠️</div><p>Select a vehicle and a valid fine date/time.</p></div>';
+    return;
+  }
+
+  if (resultBox) resultBox.innerHTML = '<div class="spinner"></div>';
+  const { data, error } = await sb.rpc('lookup_driver_by_fine_time', {
+    p_vehicle_id: vehicleId,
+    p_fine_timestamp: fineTimestamp,
+  });
+
+  if (error) {
+    if (resultBox) resultBox.innerHTML = `<p style="color:var(--red)">${fineEscapeHtml(error.message)}</p>`;
+    return;
+  }
+
+  const match = data?.[0];
+  if (!match) {
+    if (resultBox) resultBox.innerHTML = '<div class="empty-state"><div class="empty-icon">🔎</div><p>No assigned, non-cancelled booking matched that exact vehicle and timestamp.</p></div>';
+    return;
+  }
+
+  currentFineLookupMatch = match;
+  document.getElementById('fine-booking-id').value = match.booking_id;
+  document.getElementById('fine-driver-id').value = match.driver_id;
+  document.getElementById('fine-vehicle-reg').value = match.vehicle_reg;
+  document.getElementById('fine-log-timestamp').value = fineTimestamp;
+  document.getElementById('fine-notification-email').required = !match.driver_email;
+
+  if (resultBox) {
+    resultBox.innerHTML = `
+      <div class="card" style="background:#f8fafc;margin:0">
+        <div class="card-title">Matched Booking</div>
+        <div class="detail-grid">
+          <div><strong>Booking</strong><p>${fineEscapeHtml(match.invoice_no || match.booking_id)}</p></div>
+          <div><strong>Client</strong><p>${fineEscapeHtml(match.client_name || '—')}</p></div>
+          <div><strong>Vehicle</strong><p>${fineEscapeHtml(match.vehicle_reg)}</p></div>
+          <div><strong>Driver</strong><p>${fineEscapeHtml(match.driver_name || match.driver_id)} (${fineEscapeHtml(match.driver_id)})</p></div>
+          <div><strong>Phone</strong><p>${fineEscapeHtml(match.driver_phone || '—')}</p></div>
+          <div><strong>Profile Email</strong><p>${fineEscapeHtml(match.driver_email || 'No email on profile — enter alternate email below')}</p></div>
+        </div>
+      </div>`;
+  }
+  if (logCard) logCard.style.display = 'block';
+}
+
+async function submitTrafficFine(event) {
+  event?.preventDefault();
+  if (!currentFineLookupMatch) {
+    toast('Run a lookup before logging a fine.', 'warning');
+    return;
+  }
+
+  const submitBtn = event?.target?.querySelector('button[type="submit"]');
+  if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = 'Saving…'; }
+
+  const alternateEmail = document.getElementById('fine-notification-email').value.trim();
+  if (!currentFineLookupMatch.driver_email && !alternateEmail) {
+    toast('Enter an alternate email because this driver profile has no email.', 'warning');
+    if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = 'Save Fine & Send Email'; }
+    return;
+  }
+
+  const amountValue = document.getElementById('fine-amount').value;
+  const payload = {
+    booking_id: document.getElementById('fine-booking-id').value,
+    driver_id: document.getElementById('fine-driver-id').value,
+    vehicle_reg: document.getElementById('fine-vehicle-reg').value,
+    fine_timestamp: document.getElementById('fine-log-timestamp').value,
+    fine_reference: document.getElementById('fine-reference').value.trim() || null,
+    location: document.getElementById('fine-location').value.trim() || null,
+    description: document.getElementById('fine-description').value.trim() || null,
+    amount: amountValue ? Number(amountValue) : null,
+    notification_email: alternateEmail || null,
+  };
+
+  const { data: inserted, error: insertError } = await sb.from('traffic_fines').insert(payload).select('id').single();
+  if (insertError || !inserted) {
+    toast(insertError?.message || 'Fine could not be saved.', 'error');
+    if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = 'Save Fine & Send Email'; }
+    return;
+  }
+
+  try {
+    const { data: { session } } = await sb.auth.getSession();
+    const res = await fetch(CONFIG.NOTIFY_DRIVER_FINE_FUNCTION_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
+      body: JSON.stringify({ traffic_fine_id: inserted.id }),
+    });
+    const result = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(result.error || 'Notification failed');
+    toast(result.warning || 'Fine logged and driver notified.', result.warning ? 'warning' : 'success');
+  } catch (err) {
+    toast(`Fine saved, but email failed: ${err.message}`, 'warning', 6000);
+  }
+
+  event.target.reset();
+  currentFineLookupMatch = null;
+  document.getElementById('fine-log-card').style.display = 'none';
+  document.getElementById('fine-lookup-result').innerHTML = '';
+  if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = 'Save Fine & Send Email'; }
+  await loadAdminTrafficFines();
+}
+
+async function loadAdminTrafficFines() {
+  const tbody = document.getElementById('traffic-fines-tbody');
+  if (!tbody) return;
+  tbody.innerHTML = '<tr><td colspan="7"><div class="spinner"></div></td></tr>';
+  const { data, error } = await sb
+    .from('traffic_fines')
+    .select('*, bookings!traffic_fines_booking_id_fkey(invoice_no,client_name), profiles!traffic_fines_driver_id_fkey(name,phone,email)')
+    .order('fine_timestamp', { ascending: false })
+    .limit(100);
+
+  if (error) {
+    tbody.innerHTML = `<tr><td colspan="7" style="color:var(--red)">${fineEscapeHtml(error.message)}</td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = (data || []).map((fine) => `
+    <tr>
+      <td>${formatDateTime(fine.fine_timestamp)}</td>
+      <td>${fineEscapeHtml(fine.vehicle_reg)}</td>
+      <td>${fineEscapeHtml(fine.profiles?.name || fine.driver_id)}<br><span style="font-size:.73rem;color:var(--text-muted)">${fineEscapeHtml(fine.driver_id)}</span></td>
+      <td>${fineEscapeHtml(fine.bookings?.invoice_no || fine.booking_id)}<br><span style="font-size:.73rem;color:var(--text-muted)">${fineEscapeHtml(fine.bookings?.client_name || '')}</span></td>
+      <td>${fineEscapeHtml(fine.fine_reference || '—')}</td>
+      <td>${formatMoney(fine.amount)}</td>
+      <td>${fine.email_sent ? '<span class="badge badge-green">Sent</span>' : '<span class="badge badge-amber">Pending</span>'}${fine.notification_error ? `<br><span style="font-size:.72rem;color:var(--red)">${fineEscapeHtml(fine.notification_error)}</span>` : ''}</td>
+    </tr>`).join('') || '<tr><td colspan="7">No traffic fines logged yet.</td></tr>';
+}
+
+window.loadAdminTrafficFines = loadAdminTrafficFines;
+document.getElementById('fine-lookup-form')?.addEventListener('submit', lookupDriverByFineTimeDashboard);
+document.getElementById('fine-log-form')?.addEventListener('submit', submitTrafficFine);

@@ -27,6 +27,7 @@ const CONFIG = {
   SEND_OTP_FUNCTION_URL:   'https://jxsesdcwdjrxydkvhpsh.supabase.co/functions/v1/send-otp-email',
   VERIFY_OTP_FUNCTION_URL: 'https://jxsesdcwdjrxydkvhpsh.supabase.co/functions/v1/verify-otp',
   NOTIFY_EXPENSE_FUNCTION_URL: 'https://jxsesdcwdjrxydkvhpsh.supabase.co/functions/v1/notify-expense-submitted',
+  NOTIFY_DRIVER_FINE_FUNCTION_URL: 'https://jxsesdcwdjrxydkvhpsh.supabase.co/functions/v1/notify-driver-fine',
 
   // ── Maintenance Alert Edge Function (Feature 4) ───────────
   MAINTENANCE_ALERT_FUNCTION_URL: 'https://jxsesdcwdjrxydkvhpsh.supabase.co/functions/v1/check-vehicle-maintenance',
