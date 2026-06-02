@@ -121,14 +121,54 @@ function addMediaPreview(file, type) {
 
 // ── Load Data ─────────────────────────────────────────────────
 async function loadVehicleOptions() {
-  const { data } = await sb.from('vehicles').select('registration_no, model, make, current_mileage').eq('status', 'active');
+  const { data: fleetVehicles } = await sb
+    .from('vehicles')
+    .select('registration_no, model, make, current_mileage')
+    .eq('status', 'active');
   const sel = document.getElementById('vehicle-select');
-  (data || []).forEach((v) => {
-    const opt = document.createElement('option');
-    opt.value = v.registration_no; opt.dataset.mileage = v.current_mileage;
-    opt.textContent = `${v.registration_no} (${v.make || ''} ${v.model})`;
-    sel.appendChild(opt);
-  });
+  sel.innerHTML = '<option value="">— Select vehicle —</option>';
+
+  if (fleetVehicles?.length) {
+    const fleetGroup = document.createElement('optgroup');
+    fleetGroup.label = 'Fleet Vehicles';
+    fleetVehicles.forEach((v) => {
+      const opt = document.createElement('option');
+      opt.value = v.registration_no;
+      opt.dataset.mileage = v.current_mileage;
+      opt.dataset.vehicleType = 'fleet';
+      opt.textContent = `${v.registration_no} (${[v.make, v.model].filter(Boolean).join(' ')})`;
+      fleetGroup.appendChild(opt);
+    });
+    sel.appendChild(fleetGroup);
+  }
+
+  if (currentProfile?.driver_id) {
+    const today = new Date().toISOString().split('T')[0];
+    const { data: rentedBookings } = await sb
+      .from('bookings')
+      .select('id, rented_vehicle_reg, rented_vehicle_model, invoice_no')
+      .eq('assigned_driver_id', currentProfile.driver_id)
+      .eq('is_rented_vehicle', true)
+      .lte('start_date', today)
+      .gte('end_date', today)
+      .neq('status', 'cancelled');
+
+    if (rentedBookings?.length) {
+      const rentedGroup = document.createElement('optgroup');
+      rentedGroup.label = '🚗 Rented Vehicles (Active Bookings)';
+      rentedBookings.forEach((b) => {
+        if (!b.rented_vehicle_reg) return;
+        const opt = document.createElement('option');
+        opt.value = b.rented_vehicle_reg;
+        opt.dataset.vehicleType  = 'rented';
+        opt.dataset.bookingId    = b.id;
+        opt.dataset.invoiceNo    = b.invoice_no;
+        opt.textContent = `${b.rented_vehicle_reg} — ${b.rented_vehicle_model || 'Rented Vehicle'} [Rented · ${b.invoice_no}]`;
+        rentedGroup.appendChild(opt);
+      });
+      sel.appendChild(rentedGroup);
+    }
+  }
 }
 
 
@@ -179,7 +219,10 @@ document.getElementById('form-inspection')?.addEventListener('submit', async (e)
   if (clientSigPad.isEmpty()) { toast('Please provide a client signature', 'warning'); return; }
 
   const submitBtn = document.getElementById('btn-submit');
-  const vehicleReg = document.getElementById('vehicle-select').value;
+  const vehicleSelect = document.getElementById('vehicle-select');
+  const selectedVehicleOpt = vehicleSelect.selectedOptions[0];
+  const isRentedVehicle = selectedVehicleOpt?.dataset.vehicleType === 'rented';
+  const vehicleReg = vehicleSelect.value;
   const inspType = document.getElementById('insp-type').value;
   const mileage = parseInt(document.getElementById('mileage-input').value) || null;
   const notes = document.getElementById('notes-input').value.trim() || null;
@@ -196,6 +239,13 @@ document.getElementById('form-inspection')?.addEventListener('submit', async (e)
 
   const payload = {
     vehicle_reg: vehicleReg,
+    is_rented_vehicle: isRentedVehicle,
+    rented_vehicle_model: isRentedVehicle
+      ? (selectedVehicleOpt?.textContent?.split('[')[0].trim() || null)
+      : null,
+    invoice_no: isRentedVehicle
+      ? (selectedVehicleOpt?.dataset.invoiceNo || document.getElementById('invoice-select')?.value || null)
+      : (document.getElementById('invoice-select')?.value || null),
     driver_id: currentProfile.driver_id,
     inspection_type: inspType,
     checklist_json: checklist,

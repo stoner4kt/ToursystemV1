@@ -15,6 +15,27 @@
 
   initSidebar();
 
+  document.getElementById('booking-is-rented')?.addEventListener('change', function() {
+    document.getElementById('rented-vehicle-fields').style.display = this.checked ? 'block' : 'none';
+    if (!this.checked) {
+      document.getElementById('booking-rented-reg').value = '';
+      document.getElementById('booking-rented-model').value = '';
+      document.getElementById('booking-rented-vehicle-id').value = '';
+      document.getElementById('booking-rented-vehicle-select').value = '';
+    }
+  });
+
+  document.getElementById('booking-rented-vehicle-select')?.addEventListener('change', function() {
+    const sel = this.options[this.selectedIndex];
+    if (sel && sel.value) {
+      document.getElementById('booking-rented-reg').value   = sel.dataset.reg   || '';
+      document.getElementById('booking-rented-model').value = sel.dataset.model || '';
+      document.getElementById('booking-rented-vehicle-id').value = sel.value;
+    } else {
+      document.getElementById('booking-rented-vehicle-id').value = '';
+    }
+  });
+
   document.getElementById('btn-signout-sidebar')?.addEventListener('click', signOut);
 
   renderCalendar();
@@ -81,6 +102,26 @@ async function loadBookingDropdowns() {
       vsel.appendChild(opt);
     });
   }
+
+  await loadRentedVehicleDropdown();
+}
+
+async function loadRentedVehicleDropdown() {
+  const sel = document.getElementById('booking-rented-vehicle-select');
+  if (!sel) return;
+  const { data } = await sb.from('rented_vehicles')
+    .select('id,reg_no,make,model,status')
+    .in('status', ['active'])
+    .order('reg_no');
+  sel.innerHTML = '<option value="">— or enter details below —</option>';
+  (data || []).forEach((v) => {
+    const opt = document.createElement('option');
+    opt.value = v.id;
+    opt.dataset.reg   = v.reg_no;
+    opt.dataset.model = [v.make, v.model].filter(Boolean).join(' ');
+    opt.textContent   = `${v.reg_no} — ${[v.make, v.model].filter(Boolean).join(' ')} (${v.status})`;
+    sel.appendChild(opt);
+  });
 }
 
 async function renderCalendar() {
@@ -134,7 +175,10 @@ function showBookingsForDate(dateStr, cell) {
       <div class="booking-dot" style="background:${b.receipt_number ? 'var(--green)' : b.status==='cancelled' ? 'var(--red)' : 'var(--orange)'}"></div>
       <div class="booking-info">
         <div class="booking-route">${b.client_name} — ${b.tour_reference || b.route || 'Tour Ref TBC'}</div>
-        <div class="booking-meta">${b.invoice_no} · ${b.assigned_driver_id || 'Unassigned'} · ${b.assigned_vehicle_reg || 'No vehicle'}${b.receipt_number ? ' · <span style="color:var(--green);font-weight:700">RCP: ' + b.receipt_number + '</span>' : ' · <span style="color:var(--orange);font-weight:600">Unpaid</span>'}</div>
+        <div class="booking-meta">${b.invoice_no} · ${b.assigned_driver_id || 'Unassigned'} · ${b.is_rented_vehicle ? (b.rented_vehicle_reg || 'Rented vehicle') : (b.assigned_vehicle_reg || 'No vehicle')}${b.receipt_number ? ' · <span style="color:var(--green);font-weight:700">RCP: ' + b.receipt_number + '</span>' : ' · <span style="color:var(--orange);font-weight:600">Unpaid</span>'}</div>
+        ${b.is_rented_vehicle
+          ? `<span class="badge badge-amber" title="${b.rented_vehicle_reg || ''}">🚗 Rented${b.rented_vehicle_reg ? ': ' + b.rented_vehicle_reg : ''}</span>`
+          : ''}
       </div>
       <div style="display:flex;gap:6px;align-items:center;flex-shrink:0">
         ${statusBadge(b.status)}
@@ -168,6 +212,7 @@ function getBookingNotesInput() {
 }
 
 function resetBookingForm() {
+  toggleBookingLockState({ is_locked: false });
   document.getElementById('booking-id').value          = '';
   document.getElementById('booking-invoice').value     = `INV-${Date.now().toString().slice(-6)}`;
   document.getElementById('booking-client').value      = '';
@@ -176,6 +221,12 @@ function resetBookingForm() {
   document.getElementById('booking-end-date').value    = '';
   document.getElementById('booking-driver').value      = '';
   document.getElementById('booking-vehicle').value     = '';
+  document.getElementById('booking-is-rented').checked = false;
+  document.getElementById('rented-vehicle-fields').style.display = 'none';
+  document.getElementById('booking-rented-vehicle-select').value = '';
+  document.getElementById('booking-rented-reg').value = '';
+  document.getElementById('booking-rented-model').value = '';
+  document.getElementById('booking-rented-vehicle-id').value = '';
   document.getElementById('booking-status').value      = 'invoiced';
   document.getElementById('booking-payment-status').value = 'unpaid';
   const receiptEl = document.getElementById('booking-receipt-number');
@@ -259,6 +310,13 @@ async function openEditBooking(id) {
   document.getElementById('booking-end-date').value   = data.end_date;
   document.getElementById('booking-driver').value     = data.assigned_driver_id || '';
   document.getElementById('booking-vehicle').value    = data.assigned_vehicle_reg || '';
+  const isRented = !!data.is_rented_vehicle;
+  document.getElementById('booking-is-rented').checked = isRented;
+  document.getElementById('rented-vehicle-fields').style.display = isRented ? 'block' : 'none';
+  document.getElementById('booking-rented-reg').value   = data.rented_vehicle_reg   || '';
+  document.getElementById('booking-rented-model').value = data.rented_vehicle_model || '';
+  document.getElementById('booking-rented-vehicle-id').value = data.rented_vehicle_id || '';
+  document.getElementById('booking-rented-vehicle-select').value = data.rented_vehicle_id || '';
   document.getElementById('booking-status').value     = data.status;
   const notesInput = getBookingNotesInput();
   if (notesInput) notesInput.value = data.notes || '';
@@ -275,6 +333,11 @@ document.getElementById('form-booking')?.addEventListener('submit', async (e) =>
   const vehicle = document.getElementById('booking-vehicle').value;
   const start = document.getElementById('booking-start-date').value;
   const end = document.getElementById('booking-end-date').value;
+  const isRentedBooking = document.getElementById('booking-is-rented').checked;
+  if (isRentedBooking && !document.getElementById('booking-rented-reg').value.trim()) {
+    toast('Please enter the rented vehicle registration number', 'error');
+    return;
+  }
   const availability = await validateVehicleAvailability(vehicle, start, end, id || null);
   if (!availability.ok) {
     toast(availability.message, 'error');
@@ -290,7 +353,11 @@ document.getElementById('form-booking')?.addEventListener('submit', async (e) =>
     start_date:           document.getElementById('booking-start-date').value,
     end_date:             document.getElementById('booking-end-date').value,
     assigned_driver_id:   document.getElementById('booking-driver').value  || null,
-    assigned_vehicle_reg: document.getElementById('booking-vehicle').value || null,
+    assigned_vehicle_reg: isRentedBooking ? null : (document.getElementById('booking-vehicle').value || null),
+    is_rented_vehicle:    isRentedBooking,
+    rented_vehicle_id:    document.getElementById('booking-rented-vehicle-id').value || null,
+    rented_vehicle_reg:   isRentedBooking ? (document.getElementById('booking-rented-reg').value.trim() || null) : null,
+    rented_vehicle_model: isRentedBooking ? (document.getElementById('booking-rented-model').value.trim() || null) : null,
     status:               document.getElementById('booking-status').value,
     notes:                (getBookingNotesInput()?.value || '').trim(),
   };
@@ -371,7 +438,10 @@ async function loadBookingsArchive() {
       <td>${b.invoice_no}<br>${receiptHtml}</td>
       <td>${b.client_name}</td>
       <td style="font-size:.8rem">${b.assigned_driver_id || '—'}</td>
-      <td>${b.assigned_vehicle_reg || '—'}</td>
+      <td>${b.is_rented_vehicle
+        ? `<span class="badge badge-amber">🚗 ${b.rented_vehicle_reg || 'Rented'}</span>`
+        : (b.assigned_vehicle_reg || '—')
+      }</td>
       <td>${formatDate(b.start_date)}</td>
       <td>${formatDate(b.end_date)}<br>${alertBtn}</td>
       <td>${statusBadge(b.status)}</td>
@@ -406,6 +476,12 @@ async function performBookingSave(id, payload, submitBtn) {
     if (error) {
       toast('Error: ' + error.message + (error.message.includes('infinite recursion') ? ' — Check RLS policies.' : ''), 'error');
       return;
+    }
+    if (payload.is_rented_vehicle && payload.rented_vehicle_id && bookingData?.id) {
+      await sb.from('rented_vehicles').update({
+        assigned_booking_id: bookingData.id,
+        assigned_driver_id:  payload.assigned_driver_id || null,
+      }).eq('id', payload.rented_vehicle_id);
     }
     if (id) {
       await sb.from('booking_edit_log').insert({
@@ -707,7 +783,7 @@ async function loadActiveTrips() {
       <td>${b.invoice_no}</td>
       <td>${b.client_name}</td>
       <td>${b.assigned_driver_id || '—'}</td>
-      <td>${b.assigned_vehicle_reg || '—'}</td>
+      <td>${b.is_rented_vehicle ? `<span class="badge badge-amber">🚗 ${b.rented_vehicle_reg || 'Rented'}</span>` : (b.assigned_vehicle_reg || '—')}</td>
       <td>${formatDate(b.start_date)} → ${formatDate(b.end_date)}</td>
     </tr>`).join('');
 }
@@ -726,7 +802,7 @@ async function loadUpcomingTrips() {
       <td>${b.invoice_no}</td>
       <td>${b.client_name}</td>
       <td>${b.assigned_driver_id || '—'}</td>
-      <td>${b.assigned_vehicle_reg || '—'}</td>
+      <td>${b.is_rented_vehicle ? `<span class="badge badge-amber">🚗 ${b.rented_vehicle_reg || 'Rented'}</span>` : (b.assigned_vehicle_reg || '—')}</td>
       <td>${formatDate(b.start_date)}</td>
     </tr>`).join('');
 }
@@ -864,6 +940,9 @@ async function loadReports() {
         <div style="flex:1;min-width:0">
           <div class="inspection-title">${insp.vehicle_reg} — ${insp.inspection_type}</div>
           <div class="inspection-meta">Driver: ${insp.profiles?.name || insp.driver_id} · ${formatDateTime(insp.created_at)} · ${media.length} photo(s)</div>
+          ${insp.is_rented_vehicle
+            ? `<span class="badge badge-amber" style="font-size:.7rem">🚗 Rented Vehicle${insp.rented_vehicle_model ? ': ' + insp.rented_vehicle_model : ''}</span> `
+            : ''}
           ${faults.length > 0
             ? `<div class="inspection-fault-count">⚠ ${faults.length} fault(s)</div>`
             : '<div style="color:var(--green);font-size:.78rem;margin-top:3px">✓ No faults</div>'}
@@ -985,7 +1064,7 @@ async function openReportDetail(id) {
   const checklistEntries = Object.entries(insp.checklist_json || {});
   document.getElementById('report-detail-body').innerHTML = `
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px">
-      <div><strong>Vehicle</strong><p>${insp.vehicle_reg} — ${insp.vehicles?.make||''} ${insp.vehicles?.model||''}</p></div>
+      <div><strong>Vehicle</strong><p>${insp.vehicle_reg} — ${insp.is_rented_vehicle ? (insp.rented_vehicle_model || 'Rented Vehicle') : `${insp.vehicles?.make||''} ${insp.vehicles?.model||''}`}</p>${insp.is_rented_vehicle ? `<span class="badge badge-amber" style="font-size:.7rem">🚗 Rented Vehicle${insp.rented_vehicle_model ? ': ' + insp.rented_vehicle_model : ''}</span>` : ''}</div>
       <div><strong>Driver</strong><p>${insp.profiles?.name || insp.driver_id}</p></div>
       <div><strong>Type</strong><p>${statusBadge(insp.inspection_type)}</p></div>
       <div><strong>Date</strong><p>${formatDateTime(insp.created_at)}</p></div>
@@ -1099,6 +1178,8 @@ async function downloadPDF(inspectionId) {
 
 async function validateVehicleAvailability(vehicleReg,startDate,endDate,excludeBookingId=null){
   if(!vehicleReg||!startDate||!endDate) return {ok:true};
+  const isRented = document.getElementById('booking-is-rented')?.checked;
+  if(isRented) return {ok:true};
   let q=sb.from('bookings').select('id,invoice_no,start_date,end_date,status').eq('assigned_vehicle_reg',vehicleReg).neq('status','cancelled').lte('start_date',endDate).gte('end_date',startDate);
   if(excludeBookingId) q=q.neq('id',excludeBookingId);
   const {data,error}=await q; if(error) return {ok:false,message:error.message};
@@ -1113,7 +1194,13 @@ async function validateBookingCompletion(bookingId){
  if(!data.post_trip_inspection_id) return {ok:false,message:'Post-trip inspection required.'};
  return {ok:true};
 }
-function toggleBookingLockState(data){const locked=!!data?.is_locked;document.querySelectorAll('#form-booking input,#form-booking select,#form-booking textarea, #form-booking button[type="submit"]').forEach(el=>{if(el.id!=='btn-mark-complete')el.disabled=locked});document.getElementById('booking-lock-notice').style.display=locked?'block':'none';document.getElementById('btn-mark-complete').style.display=locked?'none':'inline-block';}
+function toggleBookingLockState(data){
+  const locked=!!data?.is_locked;
+  document.querySelectorAll('#form-booking input,#form-booking select,#form-booking textarea, #form-booking button[type="submit"]').forEach(el=>{if(el.id!=='btn-mark-complete')el.disabled=locked});
+  ['booking-is-rented','booking-rented-reg','booking-rented-model','booking-rented-vehicle-select'].forEach((id)=>{const el=document.getElementById(id); if(el) el.disabled=locked;});
+  document.getElementById('booking-lock-notice').style.display=locked?'block':'none';
+  document.getElementById('btn-mark-complete').style.display=locked?'none':'inline-block';
+}
 async function completeBooking(bookingId){ if(currentProfile?.role!=='admin') return toast('Only admins can complete bookings','error'); const v=await validateBookingCompletion(bookingId); if(!v.ok) return toast(v.message,'warning'); const {error}=await sb.from('bookings').update({status:'completed',is_locked:true,completed_by:currentProfile.id,completed_at:new Date().toISOString()}).eq('id',bookingId); if(error) return toast(error.message,'error'); toast('Booking completed and locked','success'); closeModal('modal-booking'); await renderCalendar(); }
 document.getElementById('btn-mark-complete')?.addEventListener('click',()=>{const id=document.getElementById('booking-id').value;if(id)completeBooking(id);});
 async function loadIncidentReports(){const {data,error}=await sb.from('incident_reports').select('*').order('created_at',{ascending:false}).limit(100);document.getElementById('incident-list').innerHTML=error?error.message:(data||[]).map(i=>`<div class="inspection-item"><div class="inspection-title">${i.incident_type}</div><div class="inspection-meta">${i.driver_id} · ${i.vehicle_reg} · ${i.status}</div></div>`).join('')||'No incidents';}

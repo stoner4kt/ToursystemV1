@@ -51,6 +51,7 @@ SET
   )
 WHERE rental_period IS NULL OR start_time IS NULL;
 
+-- SUPERSEDED by 20260602000000_fix_booking_rental_period_tz.sql
 CREATE OR REPLACE FUNCTION public.set_booking_rental_period()
 RETURNS TRIGGER
 LANGUAGE plpgsql
