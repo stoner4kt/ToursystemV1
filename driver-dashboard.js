@@ -117,7 +117,12 @@ function renderTaskList(containerId, bookings, emptyMsg) {
           <div class="task-title">${b.client_name}</div>
           ${statusBadge(b.status)}
         </div>
-        <div class="task-meta">${b.tour_reference || b.route || 'Tour Ref TBC'} · ${b.assigned_vehicle_reg || 'Vehicle TBC'}</div>
+        <div class="task-meta">
+          ${b.tour_reference || b.route || 'Tour Ref TBC'}
+          · ${b.is_rented_vehicle
+              ? `<span class="badge badge-amber" style="font-size:.72rem">🚗 Rented: ${b.rented_vehicle_reg || 'TBC'}</span>`
+              : (b.assigned_vehicle_reg || 'Vehicle TBC')}
+        </div>
         <div class="task-dates">
           📅 ${formatDate(b.start_date)} → ${formatDate(b.end_date)}
           · Ref: ${b.invoice_no}

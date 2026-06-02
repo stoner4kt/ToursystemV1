@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="theme-color" content="#0f2744">
+  <title>INYATHI — Rented Vehicles</title>
+  <link rel="manifest" href="manifest.json">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="sidebar-overlay" id="sidebar-overlay"></div>
+<nav id="app-sidebar">
+  <div class="sidebar-header">
+    <div class="sidebar-brand">IN<span>YATHI</span></div>
+    <button class="sidebar-close" id="sidebar-close" aria-label="Close menu">✕</button>
+  </div>
+  <div class="sidebar-user">
+    <div class="sidebar-user-name" id="sidebar-admin-name">Admin</div>
+    <div class="sidebar-user-role">Admin Portal</div>
+  </div>
+  <div class="sidebar-nav">
+    <div class="sidebar-nav-item"><a href="index.html" class="sidebar-nav-link"><span class="sidebar-nav-icon">📅</span> Admin Dashboard</a></div>
+    <div class="sidebar-nav-item"><a href="rented-in-vehicles.html" class="sidebar-nav-link active"><span class="sidebar-nav-icon">🚗</span> Rented Vehicles</a></div>
+  </div>
+  <div class="sidebar-footer">
+    <button class="sidebar-logout" id="btn-signout-sidebar"><span class="sidebar-nav-icon">⏻</span> Sign Out</button>
+  </div>
+</nav>
+
+<header class="app-header">
+  <div style="display:flex;align-items:center;gap:10px">
+    <button class="btn-icon" id="sidebar-toggle" aria-label="Open menu"><div class="hamburger-icon"><span></span><span></span><span></span></div></button>
+    <div class="logo">IN<span>YATHI</span></div>
+  </div>
+  <div class="header-actions"><span class="header-user" id="admin-name">Admin</span></div>
+</header>
+
+<main class="main">
+  <div class="card">
+    <div class="card-header">
+      <div>
+        <div class="card-title">Rented-In Vehicles</div>
+        <div class="card-subtitle">Active and past rented vehicles, linked bookings, and assigned drivers.</div>
+      </div>
+      <button class="btn btn-amber btn-sm" id="btn-add-rented">+ Add Rented Vehicle</button>
+    </div>
+    <div class="stats-grid">
+      <div class="stat-card"><div class="stat-value" id="rented-stat-active">—</div><div class="stat-label">On Hire + Assigned</div></div>
+      <div class="stat-card"><div class="stat-value" id="rented-stat-ending">—</div><div class="stat-label">Ending in 7 Days</div></div>
+      <div class="stat-card"><div class="stat-value" id="rented-stat-returned">—</div><div class="stat-label">Returned</div></div>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>Supplier</th><th>Vehicle</th><th>Hire Dates</th><th>Daily Rate</th><th>Status</th><th>Booking</th><th>Driver</th><th>Actions</th></tr>
+        </thead>
+        <tbody id="rented-tbody"><tr><td colspan="8"><div class="spinner"></div></td></tr></tbody>
+      </table>
+    </div>
+  </div>
+</main>
+
+<div class="modal-overlay" id="modal-rented-vehicle">
+  <div class="modal">
+    <div class="modal-header">
+      <span class="modal-title" id="modal-rented-title">Add Rented Vehicle</span>
+      <button class="modal-close" onclick="closeModal('modal-rented-vehicle')">✕</button>
+    </div>
+    <form id="form-rented-vehicle">
+      <input type="hidden" id="rented-id">
+      <div class="form-row">
+        <div class="form-group"><label>Supplier <span class="required">*</span></label><input type="text" id="rented-supplier" class="form-control" required></div>
+        <div class="form-group"><label>Registration No <span class="required">*</span></label><input type="text" id="rented-reg" class="form-control" required></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>Make</label><input type="text" id="rented-make" class="form-control"></div>
+        <div class="form-group"><label>Model</label><input type="text" id="rented-model" class="form-control"></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>Start Date</label><input type="date" id="rented-start" class="form-control"></div>
+        <div class="form-group"><label>End Date</label><input type="date" id="rented-end" class="form-control"></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>Daily Rate</label><input type="number" step="0.01" id="rented-rate" class="form-control"></div>
+        <div class="form-group"><label>Status</label><select id="rented-status" class="form-control"><option value="active">Active</option><option value="returned">Returned</option><option value="cancelled">Cancelled</option></select></div>
+      </div>
+      <div class="form-group"><label>Supplier Ref</label><input type="text" id="rented-ref" class="form-control"></div>
+      <div class="form-group"><label>Notes</label><textarea id="rented-notes" class="form-control" rows="2"></textarea></div>
+      <button type="submit" class="btn btn-amber btn-full">Save Rented Vehicle</button>
+    </form>
+  </div>
+</div>
+
+<div class="modal-overlay" id="modal-assign-rented">
+  <div class="modal" style="max-width:520px">
+    <div class="modal-header">
+      <span class="modal-title">Assign Rented Vehicle</span>
+      <button class="modal-close" onclick="closeModal('modal-assign-rented')">✕</button>
+    </div>
+    <input type="hidden" id="assign-rented-id">
+    <div id="assign-rented-label" style="font-weight:700;margin-bottom:12px"></div>
+    <div class="form-group">
+      <label>Select active unassigned booking</label>
+      <select id="assign-booking-select" class="form-control"></select>
+    </div>
+    <button class="btn btn-amber btn-full" id="btn-confirm-assign-rented">Assign to Booking</button>
+  </div>
+</div>
+
+<div id="toast-container"></div>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<script src="config.js"></script>
+<script src="app.js"></script>
+<script src="rented-in-vehicles.js"></script>
+</body>
+</html>
