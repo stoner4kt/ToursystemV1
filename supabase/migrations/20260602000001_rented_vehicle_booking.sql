@@ -35,20 +35,13 @@ ALTER TABLE public.rented_vehicles
   ADD COLUMN IF NOT EXISTS assigned_driver_id    TEXT REFERENCES public.profiles(driver_id) ON DELETE SET NULL;
 
 -- Protect supplier/rate/assignment metadata exposed through the browser API.
+-- Drivers receive rented vehicle registration/model details from their assigned
+-- bookings, so direct rented_vehicles table access is restricted to admins.
 ALTER TABLE public.rented_vehicles ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "rented_vehicles_driver_select" ON public.rented_vehicles;
 
 DO $$
 BEGIN
-  IF NOT EXISTS (
-    SELECT 1 FROM pg_policies
-    WHERE schemaname = 'public'
-      AND tablename = 'rented_vehicles'
-      AND policyname = 'rented_vehicles_driver_select'
-  ) THEN
-    CREATE POLICY "rented_vehicles_driver_select" ON public.rented_vehicles FOR SELECT TO authenticated
-      USING (assigned_driver_id = (SELECT driver_id FROM public.profiles WHERE id = auth.uid()));
-  END IF;
-
   IF NOT EXISTS (
     SELECT 1 FROM pg_policies
     WHERE schemaname = 'public'
