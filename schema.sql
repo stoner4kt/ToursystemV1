@@ -479,6 +479,34 @@ ALTER TABLE public.rented_vehicles
   ADD COLUMN IF NOT EXISTS assigned_booking_id   UUID REFERENCES public.bookings(id) ON DELETE SET NULL,
   ADD COLUMN IF NOT EXISTS assigned_driver_id    TEXT REFERENCES public.profiles(driver_id) ON DELETE SET NULL;
 
+-- Protect supplier/rate/assignment metadata exposed through the browser API.
+ALTER TABLE public.rented_vehicles ENABLE ROW LEVEL SECURITY;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies
+    WHERE schemaname = 'public'
+      AND tablename = 'rented_vehicles'
+      AND policyname = 'rented_vehicles_driver_select'
+  ) THEN
+    CREATE POLICY "rented_vehicles_driver_select" ON public.rented_vehicles FOR SELECT TO authenticated
+      USING (assigned_driver_id = (SELECT driver_id FROM public.profiles WHERE id = auth.uid()));
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies
+    WHERE schemaname = 'public'
+      AND tablename = 'rented_vehicles'
+      AND policyname = 'rented_vehicles_admin_all'
+  ) THEN
+    CREATE POLICY "rented_vehicles_admin_all" ON public.rented_vehicles FOR ALL TO authenticated
+      USING (public.is_admin())
+      WITH CHECK (public.is_admin());
+  END IF;
+END;
+$$;
+
 ALTER TABLE public.inspections
   ADD COLUMN IF NOT EXISTS is_rented_vehicle     BOOLEAN NOT NULL DEFAULT false,
   ADD COLUMN IF NOT EXISTS rented_vehicle_model  TEXT;
