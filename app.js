@@ -166,15 +166,76 @@ async function updateSyncBadge() {
   });
 }
 
-// ── Cloudinary Upload ─────────────────────────────────────────
+// ── Cloudinary Secure Upload & Delivery ───────────────────────
+const signedUrlCache = new Map();
+const SECURE_MEDIA_REFRESH_MS = 9 * 60 * 1000;
+const SECURE_MEDIA_SPINNER = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="160" height="100" viewBox="0 0 160 100"><rect width="160" height="100" fill="#f8fafc"/><text x="80" y="55" text-anchor="middle" fill="#64748b" font-family="Arial" font-size="13">Loading…</text></svg>');
+
 async function uploadToCloudinary(file, folder = 'inspections') {
+  const signedFolder = folder.startsWith('inyathi/') ? folder : `inyathi/${folder}`;
+  const { data: signatureData, error: signatureError } = await sb.functions.invoke('sign-upload', {
+    body: { folder: signedFolder, resource_type: 'auto' },
+  });
+  if (signatureError) throw new Error(signatureError.message || 'Could not sign upload');
+
+  const { signature, timestamp, api_key, cloud_name, upload_preset } = signatureData || {};
+  if (!signature || !timestamp || !api_key || !cloud_name || !upload_preset) {
+    throw new Error('Incomplete upload signature response');
+  }
+
   const formData = new FormData();
   formData.append('file', file);
-  formData.append('upload_preset', CONFIG.CLOUDINARY_UPLOAD_PRESET);
-  formData.append('folder', `inyathi/${folder}`);
-  const res = await fetch(`https://api.cloudinary.com/v1_1/${CONFIG.CLOUDINARY_CLOUD_NAME}/auto/upload`, { method: 'POST', body: formData });
-  if (!res.ok) throw new Error('Cloudinary upload failed');
-  return (await res.json()).secure_url;
+  formData.append('api_key', api_key);
+  formData.append('timestamp', timestamp);
+  formData.append('signature', signature);
+  formData.append('upload_preset', upload_preset);
+  formData.append('folder', signedFolder);
+
+  const res = await fetch(`https://api.cloudinary.com/v1_1/${cloud_name}/auto/upload`, { method: 'POST', body: formData });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error?.message || 'Cloudinary upload failed');
+
+  return {
+    public_id: data.public_id,
+    resource_type: data.resource_type,
+    format: data.format,
+    bytes: data.bytes,
+  };
+}
+
+async function getSignedUrl(publicId, resourceType = 'image', asAttachment = false) {
+  if (!publicId) return null;
+  if (typeof publicId === 'string' && publicId.startsWith('http')) return publicId;
+
+  const cacheKey = `${publicId}|${resourceType}|${asAttachment ? 'download' : 'inline'}`;
+  const cached = signedUrlCache.get(cacheKey);
+  if (cached && cached.expiresAt > Date.now()) return cached.url;
+
+  const { data, error } = await sb.functions.invoke('get-signed-url', {
+    body: { publicId, resourceType, asAttachment },
+  });
+  if (error) {
+    console.warn('Signed URL request failed:', error);
+    return null;
+  }
+  if (!data?.signedUrl) return null;
+
+  signedUrlCache.set(cacheKey, { url: data.signedUrl, expiresAt: Date.now() + SECURE_MEDIA_REFRESH_MS });
+  return data.signedUrl;
+}
+
+async function renderSecureMedia(element, publicId, resourceType = 'image') {
+  if (!element || !publicId) return;
+  const signedUrl = await getSignedUrl(publicId, resourceType);
+  if (!signedUrl) return;
+
+  if (element.tagName?.toLowerCase() === 'a') element.href = signedUrl;
+  else element.src = signedUrl;
+
+  const refreshTimer = element.dataset.secureMediaTimer;
+  if (refreshTimer) clearTimeout(Number(refreshTimer));
+  const timerId = setTimeout(() => renderSecureMedia(element, publicId, resourceType), SECURE_MEDIA_REFRESH_MS);
+  element.dataset.secureMediaTimer = String(timerId);
 }
 
 // ── Fault Alert ───────────────────────────────────────────────

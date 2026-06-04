@@ -34,7 +34,6 @@ const CHECKLIST = {
 // State
 let checklist   = {}; 
 let mediaFiles  = []; 
-let uploadedUrls = [];
 let driverSigPad;
 window.inspectionPdfUrls = [];
 let clientSigPad;
@@ -237,6 +236,21 @@ document.getElementById('form-inspection')?.addEventListener('submit', async (e)
   submitBtn.disabled = true;
   submitBtn.innerHTML = 'Submitting...';
 
+  const uploadedMedia = [];
+  if (navigator.onLine && mediaFiles.length) {
+    try {
+      toast('Uploading inspection media…', 'info');
+      for (const media of mediaFiles) {
+        uploadedMedia.push(await uploadToCloudinary(media.file, 'inspections'));
+      }
+    } catch (err) {
+      toast(`Media upload failed: ${err.message}`, 'error');
+      submitBtn.disabled = false;
+      submitBtn.textContent = 'Submit Inspection';
+      return;
+    }
+  }
+
   const payload = {
     vehicle_reg: vehicleReg,
     is_rented_vehicle: isRentedVehicle,
@@ -256,11 +270,12 @@ document.getElementById('form-inspection')?.addEventListener('submit', async (e)
     driver_signature: driverSigPad.toDataURL(),
     client_signature: clientSigPad.toDataURL(),
     submitted_at: new Date().toISOString(),
+    media_urls: uploadedMedia,
     pdf_urls: window.inspectionPdfUrls
   };
 
   if (!navigator.onLine) {
-    await saveInspectionOffline(payload);
+    await saveInspectionOffline({ ...payload, mediaFiles: mediaFiles.map((media) => ({ blob: media.file, name: 'inspections', type: media.type })) });
     toast('Saved offline — will sync later', 'warning');
     submitBtn.disabled = false; submitBtn.textContent = 'Submit Inspection';
     return;
@@ -347,19 +362,27 @@ async function loadBookingOptions() {
 async function uploadPdfToCloudinary(pdfFile){
   if(!pdfFile || pdfFile.type!=='application/pdf') throw new Error('Only PDF files are allowed');
   if(pdfFile.size > 50*1024*1024) throw new Error('PDF exceeds 50MB limit');
-  const fd = new FormData();
-  fd.append('file', pdfFile);
-  fd.append('upload_preset', CONFIG.CLOUDINARY_UPLOAD_PRESET);
-  fd.append('folder', 'transroute/inspections');
-  fd.append('resource_type', 'raw');
-  const res = await fetch(`https://api.cloudinary.com/v1_1/${CONFIG.CLOUDINARY_CLOUD_NAME}/upload`, { method:'POST', body: fd });
-  const json = await res.json();
-  if(!res.ok || !json.secure_url) throw new Error(json.error?.message || 'PDF upload failed');
-  return json.secure_url;
+  const upload = await uploadToCloudinary(pdfFile, 'transroute/inspections');
+  return { public_id: upload.public_id, resource_type: upload.resource_type || 'raw' };
 }
 document.getElementById('inspection-pdf-input')?.addEventListener('change', async (e)=>{
  const files=[...(e.target.files||[])];
  for(const f of files){
-  try{const url=await uploadPdfToCloudinary(f); window.inspectionPdfUrls.push(url); const a=document.createElement('a'); a.href=url; a.target='_blank'; a.textContent=`📄 ${f.name}`; document.getElementById('pdf-preview').appendChild(a); document.getElementById('pdf-preview').appendChild(document.createElement('br'));}catch(err){toast(err.message,'error');}
+  try{
+    const pdf = await uploadPdfToCloudinary(f);
+    window.inspectionPdfUrls.push(pdf);
+    const a=document.createElement('a');
+    a.href='#';
+    a.target='_blank';
+    a.textContent=`📄 ${f.name}`;
+    a.addEventListener('click', async (event)=>{
+      event.preventDefault();
+      const signedUrl = await getSignedUrl(pdf.public_id, pdf.resource_type || 'raw', true);
+      if (signedUrl) window.open(signedUrl, '_blank', 'noopener');
+      else toast('Could not generate PDF link','error');
+    });
+    document.getElementById('pdf-preview').appendChild(a);
+    document.getElementById('pdf-preview').appendChild(document.createElement('br'));
+  }catch(err){toast(err.message,'error');}
  }
 });
