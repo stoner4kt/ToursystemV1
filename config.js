@@ -12,7 +12,8 @@ const CONFIG = {
   // ── Cloudinary ───────────────────────────────────────────
   // https://cloudinary.com/console
   CLOUDINARY_CLOUD_NAME: 'dzf97vyjs',
-  CLOUDINARY_UPLOAD_PRESET: 'transroute_uploads',
+  SIGN_UPLOAD_FUNCTION_URL: 'https://jxsesdcwdjrxydkvhpsh.supabase.co/functions/v1/sign-upload',
+  GET_SIGNED_URL_FUNCTION_URL: 'https://jxsesdcwdjrxydkvhpsh.supabase.co/functions/v1/get-signed-url',
 
   // ── App Branding ─────────────────────────────────────────
   APP_NAME: 'INYATHI',

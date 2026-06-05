@@ -152,13 +152,35 @@ function renderEmpty(message, icon = '🔧') {
   return `<div class="empty-state"><div class="empty-icon">${icon}</div><p>${escapeHtml(message)}</p></div>`;
 }
 
+function attachmentPublicId(file) {
+  return file?.public_id || null;
+}
+
+async function openSignedExpenseAttachment(event, publicId, resourceType = 'raw') {
+  event.preventDefault();
+  const signedUrl = await getSignedUrl(publicId, resourceType, true);
+  if (!signedUrl) return toast('Could not generate secure attachment link', 'error');
+  window.open(signedUrl, '_blank', 'noopener');
+}
+window.openSignedExpenseAttachment = openSignedExpenseAttachment;
+
 function attachmentLinks(expense) {
   const docs = Array.isArray(expense.document_urls) ? expense.document_urls : [];
   const photos = Array.isArray(expense.photo_urls) ? expense.photo_urls : [];
+  const renderLink = (file, icon, fallbackName) => {
+    const label = escapeHtml(file.filename || fallbackName);
+    if (file.url && !file.public_id) {
+      return `<a class="expense-attachment" target="_blank" rel="noopener" href="${escapeHtml(file.url)}">${icon} ${label}</a>`;
+    }
+    if (attachmentPublicId(file)) {
+      return `<a class="expense-attachment" target="_blank" rel="noopener" href="#" onclick="openSignedExpenseAttachment(event, '${escapeHtml(file.public_id)}', '${escapeHtml(file.resource_type || 'raw')}')">${icon} ${label}</a>`;
+    }
+    return '';
+  };
   const links = [
-    ...docs.map((f) => `<a class="expense-attachment" target="_blank" rel="noopener" href="${escapeHtml(f.url)}">📄 ${escapeHtml(f.filename || 'Document')}</a>`),
-    ...photos.map((f) => `<a class="expense-attachment" target="_blank" rel="noopener" href="${escapeHtml(f.url)}">🖼 ${escapeHtml(f.filename || 'Photo')}</a>`),
-  ];
+    ...docs.map((f) => renderLink(f, '📄', 'Document')),
+    ...photos.map((f) => renderLink(f, '🖼', 'Photo')),
+  ].filter(Boolean);
   return links.length ? `<div class="expense-attachments">${links.join('')}</div>` : '<span style="color:var(--text-muted)">No attachments</span>';
 }
 
@@ -221,15 +243,15 @@ async function submitDriverExpense(e, profile) {
     const documentUrls = [];
     for (const f of docFiles) {
       if (f.size > 10 * 1024 * 1024) { toast(`File too large: ${f.name}`, 'error'); return; }
-      const url = await uploadToCloudinary(f, 'expenses');
-      documentUrls.push({ url, filename: f.name, size: f.size, resource_type: f.type, uploaded_at: new Date().toISOString() });
+      const upload = await uploadToCloudinary(f, 'expenses');
+      documentUrls.push({ ...upload, filename: f.name, size: f.size, uploaded_at: new Date().toISOString() });
     }
 
     const photoFiles = Array.from(document.getElementById('exp-photos').files || []);
     const photoUrls = [];
     for (const f of photoFiles) {
-      const url = await uploadToCloudinary(f, 'expenses/photos');
-      photoUrls.push({ url, filename: f.name, size: f.size, uploaded_at: new Date().toISOString() });
+      const upload = await uploadToCloudinary(f, 'expenses/photos');
+      photoUrls.push({ ...upload, filename: f.name, size: f.size, uploaded_at: new Date().toISOString() });
     }
 
     const payload = {
@@ -337,12 +359,12 @@ async function uploadExpenseFiles(documentInputId, photoInputId) {
   const photoUrls = [];
   for (const f of Array.from(document.getElementById(documentInputId)?.files || [])) {
     if (f.size > 10 * 1024 * 1024) throw new Error(`File too large: ${f.name}`);
-    const url = await uploadToCloudinary(f, 'expenses');
-    documentUrls.push({ url, filename: f.name, size: f.size, resource_type: f.type, uploaded_at: new Date().toISOString() });
+    const upload = await uploadToCloudinary(f, 'expenses');
+    documentUrls.push({ ...upload, filename: f.name, size: f.size, uploaded_at: new Date().toISOString() });
   }
   for (const f of Array.from(document.getElementById(photoInputId)?.files || [])) {
-    const url = await uploadToCloudinary(f, 'expenses/photos');
-    photoUrls.push({ url, filename: f.name, size: f.size, resource_type: f.type, uploaded_at: new Date().toISOString() });
+    const upload = await uploadToCloudinary(f, 'expenses/photos');
+    photoUrls.push({ ...upload, filename: f.name, size: f.size, uploaded_at: new Date().toISOString() });
   }
   return { documentUrls, photoUrls };
 }

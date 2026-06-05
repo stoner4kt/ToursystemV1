@@ -241,9 +241,32 @@ function resetBookingForm() {
   renderBookingDocumentsList();
   renderItineraryPreview(null);
 }
+function bookingDocumentHref(doc, asAttachment = true) {
+  if (doc?.url && !doc?.public_id) return doc.url;
+  return '#';
+}
+
+function bookingDocumentAttrs(doc) {
+  if (!doc?.public_id) return '';
+  return `data-public-id="${escapeHtml(doc.public_id)}" data-resource-type="${escapeHtml(doc.resource_type || 'raw')}" data-secure-download="true"`;
+}
+
+async function handleSecureDocumentContainerClick(event) {
+  const link = event.target.closest('a[data-secure-download="true"]');
+  if (!link) return;
+  event.preventDefault();
+  const signedUrl = await getSignedUrl(link.dataset.publicId, link.dataset.resourceType || 'raw', true);
+  if (!signedUrl) return toast('Could not generate secure link', 'error');
+  window.open(signedUrl, '_blank', 'noopener');
+}
+
 function renderBookingDocumentsList() {
   const holder = document.getElementById('booking-documents-list');
   if (!holder) return;
+  if (!holder.dataset.secureDocHandlerBound) {
+    holder.addEventListener('click', handleSecureDocumentContainerClick);
+    holder.dataset.secureDocHandlerBound = 'true';
+  }
   if (!currentBookingDocuments.length) {
     holder.innerHTML = `<div style="color:var(--text-muted);font-size:.82rem">No documents attached.</div>`;
     return;
@@ -255,13 +278,15 @@ function renderBookingDocumentsList() {
     const isImg  = /\.(jpg|jpeg|png|gif|webp)$/i.test(name);
     const isWord = /\.(doc|docx)$/i.test(name);
     const icon   = isPdf ? '📄' : isWord ? '📝' : isImg ? '' : '📎';
-    const preview = isImg
-      ? `<img src="${d.url}" loading="lazy" alt="${name}" style="max-height:60px;border-radius:4px;object-fit:cover;flex-shrink:0">`
-      : `<span class="doc-preview-icon">${icon}</span>`;
+    const legacyUrl = d.url && !d.public_id;
+    const preview = isImg && legacyUrl
+      ? `<img src="${d.url}" loading="lazy" alt="${escapeHtml(name)}" style="max-height:60px;border-radius:4px;object-fit:cover;flex-shrink:0">`
+      : `<span class="doc-preview-icon">${icon || '🖼'}</span>`;
+    const href = bookingDocumentHref(d);
     return `<div class="doc-preview-item">
       ${preview}
       <div class="doc-preview-meta">
-        <a href="${d.url || '#'}" target="_blank" rel="noopener" class="doc-preview-name">${name}</a>
+        <a href="${href}" target="_blank" rel="noopener" class="doc-preview-name" ${bookingDocumentAttrs(d)}>${escapeHtml(name)}</a>
         <span>${d.size ? Math.round(d.size / 1024) + ' KB' : '—'} · ${d.uploaded_at ? formatDateTime(d.uploaded_at) : '—'}</span>
       </div>
       ${isAdmin ? `<button type="button" class="btn btn-sm btn-danger" onclick="removeBookingDocument(${i})" title="Remove document" style="flex-shrink:0">🗑</button>` : ''}
@@ -278,12 +303,20 @@ function renderBookingDocumentsList() {
 function renderItineraryPreview(itinerary) {
   const el = document.getElementById('booking-itinerary-preview');
   if (!el) return;
-  if (!itinerary?.url) { el.innerHTML = ''; return; }
-  const isPdf = /\.pdf$/i.test(itinerary.filename || '');
+  if (!el.dataset.secureDocHandlerBound) {
+    el.addEventListener('click', handleSecureDocumentContainerClick);
+    el.dataset.secureDocHandlerBound = 'true';
+  }
+  if (!itinerary) { el.innerHTML = ''; return; }
+  const itineraryObj = typeof itinerary === 'string' ? { url: itinerary } : itinerary;
+  const isLegacy = itineraryObj.url && !itineraryObj.public_id;
+  if (!isLegacy && !itineraryObj.public_id) { el.innerHTML = ''; return; }
+  const isPdf = /\.pdf$/i.test(itineraryObj.filename || '');
+  const href = isLegacy ? itineraryObj.url : '#';
   el.innerHTML = `<div class="doc-preview-item">
     <span class="doc-preview-icon">${isPdf ? '📄' : '📎'}</span>
     <div class="doc-preview-meta">
-      <a href="${itinerary.url}" target="_blank" rel="noopener" class="doc-preview-name">${itinerary.filename || 'Itinerary'}</a>
+      <a href="${href}" target="_blank" rel="noopener" class="doc-preview-name" ${bookingDocumentAttrs(itineraryObj)}>${escapeHtml(itineraryObj.filename || 'Itinerary')}</a>
       <span>Current itinerary · Click to open</span>
     </div>
   </div>`;
@@ -322,7 +355,7 @@ async function openEditBooking(id) {
   if (notesInput) notesInput.value = data.notes || '';
   currentBookingDocuments = Array.isArray(data.booking_documents) ? data.booking_documents : [];
   renderBookingDocumentsList();
-  renderItineraryPreview(data.itinerary_url ? { url: data.itinerary_url, filename: data.itinerary_filename } : null);
+  renderItineraryPreview(data.itinerary_url ? (typeof data.itinerary_url === 'object' ? data.itinerary_url : { url: data.itinerary_url, filename: data.itinerary_filename }) : null);
   document.getElementById('modal-booking-title').textContent = 'Edit Booking';
   openModal('modal-booking');
 }
@@ -372,8 +405,8 @@ document.getElementById('form-booking')?.addEventListener('submit', async (e) =>
     toast('Uploading documents…', 'info');
     try {
       for (const f of files) {
-        const url = await uploadToCloudinary(f, 'booking-documents');
-        currentBookingDocuments.push({ url, filename: f.name, size: f.size, uploaded_at: new Date().toISOString(), uploaded_by: currentProfile?.id || null });
+        const upload = await uploadToCloudinary(f, 'booking-documents');
+        currentBookingDocuments.push({ ...upload, filename: f.name, size: f.size, uploaded_at: new Date().toISOString(), uploaded_by: currentProfile?.id || null });
       }
       toast('Documents saved', 'success');
     } catch (err) {
@@ -388,8 +421,8 @@ document.getElementById('form-booking')?.addEventListener('submit', async (e) =>
     if (currentProfile?.role !== 'admin') return toast('Only admins can upload itineraries', 'error');
     try {
       toast('Uploading itinerary…', 'info');
-      const itinUrl = await uploadToCloudinary(itineraryFile, 'booking-itinerary');
-      payload.itinerary_url         = itinUrl;
+      const itineraryUpload = await uploadToCloudinary(itineraryFile, 'booking-itinerary');
+      payload.itinerary_url         = { ...itineraryUpload, filename: itineraryFile.name };
       payload.itinerary_filename    = itineraryFile.name;
       payload.itinerary_uploaded_at = new Date().toISOString();
     } catch (err) {
@@ -1086,16 +1119,31 @@ async function openReportDetail(id) {
     ${media.length > 0 ? `
       <div><strong>Photos / Videos</strong>
         <div class="media-preview" style="margin-top:8px">
-          ${media.map((url) => url.match(/\.(mp4|webm|mov)$/i)
-            ? `<div class="media-preview-item"><video src="${url}" controls></video></div>`
-            : `<div class="media-preview-item"><a href="${url}" target="_blank"><img src="${url}" alt="media"></a></div>`
-          ).join('')}
+          ${media.map((item, index) => {
+            const legacyUrl = typeof item === 'string' ? item : item?.url;
+            const publicId = typeof item === 'object' ? item?.public_id : null;
+            const resourceType = (typeof item === 'object' ? item?.resource_type : null) || (/\.(mp4|webm|mov)$/i.test(legacyUrl || '') ? 'video' : 'image');
+            if (publicId) {
+              return resourceType === 'video'
+                ? `<div class="media-preview-item"><video src="${SECURE_MEDIA_SPINNER}" controls data-secure-media="true" data-public-id="${escapeHtml(publicId)}" data-resource-type="video"></video></div>`
+                : `<div class="media-preview-item"><a href="#" target="_blank" data-secure-media-link="report-media-${index}"><img id="report-media-${index}" src="${SECURE_MEDIA_SPINNER}" alt="media" data-secure-media="true" data-public-id="${escapeHtml(publicId)}" data-resource-type="image"></a></div>`;
+            }
+            return /\.(mp4|webm|mov)$/i.test(legacyUrl || '')
+              ? `<div class="media-preview-item"><video src="${legacyUrl}" controls></video></div>`
+              : `<div class="media-preview-item"><a href="${legacyUrl}" target="_blank"><img src="${legacyUrl}" alt="media"></a></div>`;
+          }).join('')}
         </div>
       </div>` : ''}
     ${insp.notes ? `<div style="margin-top:12px"><strong>Notes</strong><p style="font-size:.88rem;color:var(--text-muted)">${insp.notes}</p></div>` : ''}
     <div style="margin-top:18px"><button class="btn btn-amber btn-full" onclick="downloadPDF('${insp.id}')">⬇ Download PDF Report</button></div>
   `;
   document.getElementById('report-detail-id').value = id;
+  document.querySelectorAll('#report-detail-body [data-secure-media="true"]').forEach((el) => {
+    renderSecureMedia(el, el.dataset.publicId, el.dataset.resourceType || 'image').then(() => {
+      const link = el.closest('a[data-secure-media-link]');
+      if (link && el.src) link.href = el.src;
+    });
+  });
   openModal('modal-report-detail');
 }
 
