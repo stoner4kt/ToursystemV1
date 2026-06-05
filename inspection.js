@@ -294,22 +294,16 @@ async function loadBookingOptions() {
   });
 }
 
-async function uploadPdfToCloudinary(pdfFile){
-  if(!pdfFile || pdfFile.type!=='application/pdf') throw new Error('Only PDF files are allowed');
-  if(pdfFile.size > 50*1024*1024) throw new Error('PDF exceeds 50MB limit');
-  const fd = new FormData();
-  fd.append('file', pdfFile);
-  fd.append('upload_preset', CONFIG.CLOUDINARY_UPLOAD_PRESET);
-  fd.append('folder', 'transroute/inspections');
-  fd.append('resource_type', 'raw');
-  const res = await fetch(`https://api.cloudinary.com/v1_1/${CONFIG.CLOUDINARY_CLOUD_NAME}/upload`, { method:'POST', body: fd });
-  const json = await res.json();
-  if(!res.ok || !json.secure_url) throw new Error(json.error?.message || 'PDF upload failed');
-  return json.secure_url;
-}
-document.getElementById('inspection-pdf-input')?.addEventListener('change', async (e)=>{
- const files=[...(e.target.files||[])];
- for(const f of files){
-  try{const url=await uploadPdfToCloudinary(f); window.inspectionPdfUrls.push(url); const a=document.createElement('a'); a.href=url; a.target='_blank'; a.textContent=`📄 ${f.name}`; document.getElementById('pdf-preview').appendChild(a); document.getElementById('pdf-preview').appendChild(document.createElement('br'));}catch(err){toast(err.message,'error');}
- }
+document.getElementById('inspection-pdf-input')?.addEventListener('change', async (e) => {
+  const files = [...(e.target.files || [])];
+  for (const f of files) {
+    try {
+      const url = await uploadToCloudinary(f, 'inspections');
+      window.inspectionPdfUrls.push(url);
+      const a = document.createElement('a');
+      a.href = url; a.target = '_blank'; a.textContent = `📄 ${f.name}`;
+      document.getElementById('pdf-preview').appendChild(a);
+      document.getElementById('pdf-preview').appendChild(document.createElement('br'));
+    } catch (err) { toast(err.message, 'error'); }
+  }
 });
