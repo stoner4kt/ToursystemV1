@@ -260,6 +260,54 @@ async function handleSecureDocumentContainerClick(event) {
   window.open(signedUrl, '_blank', 'noopener');
 }
 
+function normalizeItineraryMetadata(itinerary) {
+  if (!itinerary) return null;
+
+  let meta = itinerary;
+  if (typeof itinerary === 'string') {
+    try {
+      meta = JSON.parse(itinerary);
+    } catch (_) {
+      meta = { url: itinerary, filename: 'Itinerary' };
+    }
+  }
+
+  if (!meta || typeof meta !== 'object') return null;
+  if (meta.public_id) return { ...meta, filename: meta.filename || 'Itinerary', resource_type: meta.resource_type || 'raw' };
+  if (meta.url) return { ...meta, filename: meta.filename || 'Itinerary' };
+  return null;
+}
+
+function itineraryLinkAttrs(meta) {
+  if (!meta?.public_id) return '';
+  return `data-public-id="${escapeHtml(meta.public_id)}" data-resource-type="${escapeHtml(meta.resource_type || 'raw')}" data-itinerary-secure-download="true"`;
+}
+
+function renderItineraryLink(itinerary, label = '📋 Itinerary', className = '', style = '') {
+  const meta = normalizeItineraryMetadata(itinerary);
+  if (!meta) return '';
+
+  const href = meta.public_id ? '#' : meta.url;
+  const classAttr = className ? ` class="${escapeHtml(className)}"` : '';
+  const styleAttr = style ? ` style="${escapeHtml(style)}"` : '';
+  return `<a href="${escapeHtml(href)}" target="_blank" rel="noopener"${classAttr}${styleAttr} ${itineraryLinkAttrs(meta)}>${escapeHtml(label)}</a>`;
+}
+
+async function handleSecureItineraryLinkClick(event) {
+  const link = event.target.closest('a[data-itinerary-secure-download="true"]');
+  if (!link) return;
+  event.preventDefault();
+  const signedUrl = await getSignedUrl(link.dataset.publicId, link.dataset.resourceType || 'raw', false);
+  if (!signedUrl) return toast('Could not generate secure link', 'error');
+  window.open(signedUrl, '_blank', 'noopener');
+}
+
+function bindSecureItineraryLinks(container) {
+  if (!container || container.dataset.secureItineraryHandlerBound) return;
+  container.addEventListener('click', handleSecureItineraryLinkClick);
+  container.dataset.secureItineraryHandlerBound = 'true';
+}
+
 function renderBookingDocumentsList() {
   const holder = document.getElementById('booking-documents-list');
   if (!holder) return;
@@ -303,20 +351,17 @@ function renderBookingDocumentsList() {
 function renderItineraryPreview(itinerary) {
   const el = document.getElementById('booking-itinerary-preview');
   if (!el) return;
-  if (!el.dataset.secureDocHandlerBound) {
-    el.addEventListener('click', handleSecureDocumentContainerClick);
-    el.dataset.secureDocHandlerBound = 'true';
-  }
-  if (!itinerary) { el.innerHTML = ''; return; }
-  const itineraryObj = typeof itinerary === 'string' ? { url: itinerary } : itinerary;
-  const isLegacy = itineraryObj.url && !itineraryObj.public_id;
-  if (!isLegacy && !itineraryObj.public_id) { el.innerHTML = ''; return; }
-  const isPdf = /\.pdf$/i.test(itineraryObj.filename || '');
-  const href = isLegacy ? itineraryObj.url : '#';
+  bindSecureItineraryLinks(el);
+
+  const meta = normalizeItineraryMetadata(itinerary);
+  if (!meta) { el.innerHTML = ''; return; }
+
+  const isPdf = /\.pdf$/i.test(meta.filename || '');
+  const link = renderItineraryLink(meta, meta.filename || 'Itinerary', 'doc-preview-name');
   el.innerHTML = `<div class="doc-preview-item">
     <span class="doc-preview-icon">${isPdf ? '📄' : '📎'}</span>
     <div class="doc-preview-meta">
-      <a href="${href}" target="_blank" rel="noopener" class="doc-preview-name" ${bookingDocumentAttrs(itineraryObj)}>${escapeHtml(itineraryObj.filename || 'Itinerary')}</a>
+      ${link}
       <span>Current itinerary · Click to open</span>
     </div>
   </div>`;
@@ -355,7 +400,7 @@ async function openEditBooking(id) {
   if (notesInput) notesInput.value = data.notes || '';
   currentBookingDocuments = Array.isArray(data.booking_documents) ? data.booking_documents : [];
   renderBookingDocumentsList();
-  renderItineraryPreview(data.itinerary_url ? (typeof data.itinerary_url === 'object' ? data.itinerary_url : { url: data.itinerary_url, filename: data.itinerary_filename }) : null);
+  renderItineraryPreview(data.itinerary_url);
   document.getElementById('modal-booking-title').textContent = 'Edit Booking';
   openModal('modal-booking');
 }
@@ -422,7 +467,7 @@ document.getElementById('form-booking')?.addEventListener('submit', async (e) =>
     try {
       toast('Uploading itinerary…', 'info');
       const itineraryUpload = await uploadToCloudinary(itineraryFile, 'booking-itinerary');
-      payload.itinerary_url         = { ...itineraryUpload, filename: itineraryFile.name };
+      payload.itinerary_url         = JSON.stringify({ public_id: itineraryUpload.public_id, resource_type: itineraryUpload.resource_type, filename: itineraryFile.name });
       payload.itinerary_filename    = itineraryFile.name;
       payload.itinerary_uploaded_at = new Date().toISOString();
     } catch (err) {
@@ -467,6 +512,7 @@ async function loadBookingsArchive() {
     const alertBtn = !b.maintenance_alert_sent && b.status !== 'cancelled'
       ? `<button class="btn btn-sm" style="background:var(--orange);color:#fff;margin-top:4px" title="Send vehicle return/maintenance alert email" onclick="sendMaintenanceAlertForBooking('${b.id}')">🔔 Alert</button>`
       : b.maintenance_alert_sent ? `<span style="font-size:.73rem;color:var(--green)">✓ Alerted</span>` : '';
+    const itineraryLink = renderItineraryLink(b.itinerary_url, '📋 Itinerary', '', 'font-size:.73rem');
     return `<tr>
       <td>${b.invoice_no}<br>${receiptHtml}</td>
       <td>${b.client_name}</td>
@@ -478,10 +524,11 @@ async function loadBookingsArchive() {
       <td>${formatDate(b.start_date)}</td>
       <td>${formatDate(b.end_date)}<br>${alertBtn}</td>
       <td>${statusBadge(b.status)}</td>
-      <td>${docs.length ? `<span class="badge badge-blue">${docs.length} docs</span>` : '—'}${b.itinerary_url ? '<br><a href="'+b.itinerary_url+'" target="_blank" style="font-size:.73rem">📋 Itinerary</a>' : ''}</td>
+      <td>${docs.length ? `<span class="badge badge-blue">${docs.length} docs</span>` : '—'}${itineraryLink ? `<br>${itineraryLink}` : ''}</td>
       <td><button class="btn btn-sm btn-outline" onclick="openEditBooking('${b.id}')">View Details</button>${docs.length ? ` <button class="btn btn-sm btn-amber" onclick="downloadBookingDocuments('${b.id}')">Docs</button>` : ''}</td>
     </tr>`;
   }).join('') || `<tr><td colspan="9">No bookings found.</td></tr>`;
+  bindSecureItineraryLinks(tbody);
 }
 async function downloadBookingDocuments(bookingId) {
   const { data } = await sb.from('bookings').select('booking_documents').eq('id', bookingId).single();
