@@ -303,23 +303,52 @@ function renderBookingDocumentsList() {
 function renderItineraryPreview(itinerary) {
   const el = document.getElementById('booking-itinerary-preview');
   if (!el) return;
-  if (!el.dataset.secureDocHandlerBound) {
-    el.addEventListener('click', handleSecureDocumentContainerClick);
-    el.dataset.secureDocHandlerBound = 'true';
+  if (!el.dataset.secureItineraryHandlerBound) {
+    el.addEventListener('click', async (event) => {
+      const link = event.target.closest('a[data-itinerary-secure-download="true"]');
+      if (!link) return;
+      event.preventDefault();
+      const signedUrl = await getSignedUrl(link.dataset.publicId, link.dataset.resourceType || 'raw', false);
+      if (!signedUrl) return toast('Could not generate secure link', 'error');
+      window.open(signedUrl, '_blank', 'noopener');
+    });
+    el.dataset.secureItineraryHandlerBound = 'true';
   }
   if (!itinerary) { el.innerHTML = ''; return; }
-  const itineraryObj = typeof itinerary === 'string' ? { url: itinerary } : itinerary;
-  const isLegacy = itineraryObj.url && !itineraryObj.public_id;
-  if (!isLegacy && !itineraryObj.public_id) { el.innerHTML = ''; return; }
-  const isPdf = /\.pdf$/i.test(itineraryObj.filename || '');
-  const href = isLegacy ? itineraryObj.url : '#';
-  el.innerHTML = `<div class="doc-preview-item">
-    <span class="doc-preview-icon">${isPdf ? '📄' : '📎'}</span>
-    <div class="doc-preview-meta">
-      <a href="${href}" target="_blank" rel="noopener" class="doc-preview-name" ${bookingDocumentAttrs(itineraryObj)}>${escapeHtml(itineraryObj.filename || 'Itinerary')}</a>
-      <span>Current itinerary · Click to open</span>
-    </div>
-  </div>`;
+
+  let meta = itinerary;
+  if (typeof itinerary === 'string') {
+    try {
+      meta = JSON.parse(itinerary);
+    } catch (_) {
+      meta = { url: itinerary, filename: 'Itinerary' };
+    }
+  }
+
+  if (!meta || typeof meta !== 'object') { el.innerHTML = ''; return; }
+
+  if (meta.public_id) {
+    const isPdf = /\.pdf$/i.test(meta.filename || '');
+    const attrs = `data-public-id="${escapeHtml(meta.public_id)}" data-resource-type="${escapeHtml(meta.resource_type || 'raw')}" data-itinerary-secure-download="true"`;
+    el.innerHTML = `<div class="doc-preview-item">
+      <span class="doc-preview-icon">${isPdf ? '📄' : '📎'}</span>
+      <div class="doc-preview-meta">
+        <a href="#" target="_blank" rel="noopener" class="doc-preview-name" ${attrs}>${escapeHtml(meta.filename || 'Itinerary')}</a>
+        <span>Current itinerary · Click to open</span>
+      </div>
+    </div>`;
+  } else if (meta.url) {
+    const isPdf = /\.pdf$/i.test(meta.filename || '');
+    el.innerHTML = `<div class="doc-preview-item">
+      <span class="doc-preview-icon">${isPdf ? '📄' : '📎'}</span>
+      <div class="doc-preview-meta">
+        <a href="${meta.url}" target="_blank" rel="noopener" class="doc-preview-name">${escapeHtml(meta.filename || 'Itinerary')}</a>
+        <span>Current itinerary · Click to open</span>
+      </div>
+    </div>`;
+  } else {
+    el.innerHTML = '';
+  }
 }
 function removeBookingDocument(i) {
   if (currentProfile?.role !== 'admin') return toast('Only admins can remove documents', 'error');
@@ -355,7 +384,7 @@ async function openEditBooking(id) {
   if (notesInput) notesInput.value = data.notes || '';
   currentBookingDocuments = Array.isArray(data.booking_documents) ? data.booking_documents : [];
   renderBookingDocumentsList();
-  renderItineraryPreview(data.itinerary_url ? (typeof data.itinerary_url === 'object' ? data.itinerary_url : { url: data.itinerary_url, filename: data.itinerary_filename }) : null);
+  renderItineraryPreview(data.itinerary_url);
   document.getElementById('modal-booking-title').textContent = 'Edit Booking';
   openModal('modal-booking');
 }
@@ -422,7 +451,7 @@ document.getElementById('form-booking')?.addEventListener('submit', async (e) =>
     try {
       toast('Uploading itinerary…', 'info');
       const itineraryUpload = await uploadToCloudinary(itineraryFile, 'booking-itinerary');
-      payload.itinerary_url         = { ...itineraryUpload, filename: itineraryFile.name };
+      payload.itinerary_url         = JSON.stringify({ public_id: itineraryUpload.public_id, resource_type: itineraryUpload.resource_type, filename: itineraryFile.name });
       payload.itinerary_filename    = itineraryFile.name;
       payload.itinerary_uploaded_at = new Date().toISOString();
     } catch (err) {
