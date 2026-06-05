@@ -839,3 +839,27 @@ tbody tr:nth-child(even) { background: rgba(240,244,248,.5); }
 
   .modal { max-width: 640px; }
 }
+
+/* ── RENTED VEHICLE BOOKING INDICATOR ─────────────────────── */
+#rented-vehicle-fields {
+  animation: fadeSlideIn .2s ease;
+}
+@keyframes fadeSlideIn {
+  from { opacity: 0; transform: translateY(-6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.rented-vehicle-badge {
+  display: inline-flex; align-items: center; gap: 5px;
+  background: #fffbeb; border: 1.5px solid var(--amber);
+  color: var(--amber-dark); border-radius: 999px;
+  padding: 3px 10px; font-size: .72rem; font-weight: 700;
+  letter-spacing: .3px;
+}
+
+/* Task card rented indicator */
+.task-card .rented-badge {
+  font-size: .72rem; padding: 2px 8px;
+  background: rgba(245,158,11,.15); border: 1px solid var(--amber);
+  color: var(--amber-dark); border-radius: 6px; font-weight: 700;
+}

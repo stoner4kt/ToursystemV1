@@ -12,7 +12,8 @@ const CONFIG = {
   // ── Cloudinary ───────────────────────────────────────────
   // https://cloudinary.com/console
   CLOUDINARY_CLOUD_NAME: 'dzf97vyjs',
-  CLOUDINARY_UPLOAD_PRESET: 'transroute_uploads',
+  SIGN_UPLOAD_FUNCTION_URL: 'https://jxsesdcwdjrxydkvhpsh.supabase.co/functions/v1/sign-upload',
+  GET_SIGNED_URL_FUNCTION_URL: 'https://jxsesdcwdjrxydkvhpsh.supabase.co/functions/v1/get-signed-url',
 
   // ── App Branding ─────────────────────────────────────────
   APP_NAME: 'INYATHI',
@@ -26,6 +27,8 @@ const CONFIG = {
   // ── OTP Edge Functions (Features 3 & 6) ──────────────────
   SEND_OTP_FUNCTION_URL:   'https://jxsesdcwdjrxydkvhpsh.supabase.co/functions/v1/send-otp-email',
   VERIFY_OTP_FUNCTION_URL: 'https://jxsesdcwdjrxydkvhpsh.supabase.co/functions/v1/verify-otp',
+  NOTIFY_EXPENSE_FUNCTION_URL: 'https://jxsesdcwdjrxydkvhpsh.supabase.co/functions/v1/notify-expense-submitted',
+  NOTIFY_DRIVER_FINE_FUNCTION_URL: 'https://jxsesdcwdjrxydkvhpsh.supabase.co/functions/v1/notify-driver-fine',
 
   // ── Maintenance Alert Edge Function (Feature 4) ───────────
   MAINTENANCE_ALERT_FUNCTION_URL: 'https://jxsesdcwdjrxydkvhpsh.supabase.co/functions/v1/check-vehicle-maintenance',

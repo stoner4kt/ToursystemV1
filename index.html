@@ -37,6 +37,11 @@
       </button>
     </div>
     <div class="sidebar-nav-item">
+      <a href="rented-in-vehicles.html" class="sidebar-nav-link">
+        <span class="sidebar-nav-icon">🚗</span> Rented Vehicles
+      </a>
+    </div>
+    <div class="sidebar-nav-item">
       <button class="sidebar-nav-link" data-tab="drivers" onclick="switchTab('drivers')">
         <span class="sidebar-nav-icon">👥</span> Drivers
       </button>
@@ -64,6 +69,16 @@
     <div class="sidebar-nav-item">
       <button class="sidebar-nav-link" data-tab="checklists" onclick="switchTab('checklists')">
         <span class="sidebar-nav-icon">🛠</span> Vehicle Checklists
+      </button>
+    </div>
+    <div class="sidebar-nav-item">
+      <a href="vehicle-expenses.html" class="sidebar-nav-link">
+        <span class="sidebar-nav-icon">🔧</span> Damages &amp; Expenses
+      </a>
+    </div>
+    <div class="sidebar-nav-item">
+      <button class="sidebar-nav-link" data-tab="traffic-fines" onclick="switchTab('traffic-fines')">
+        <span class="sidebar-nav-icon">🚦</span> Traffic Fines
       </button>
     </div>
     <div class="sidebar-nav-item">
@@ -123,6 +138,7 @@
   <button class="tab-btn" data-tab="wages">💷 Wages Reconciliation</button>
   <button class="tab-btn" data-tab="transfer-recon">📝 Transfer Recon</button>
   <button class="tab-btn" data-tab="checklists">🛠 Vehicle Checklists</button>
+  <button class="tab-btn" data-tab="traffic-fines">🚦 Traffic Fines</button>
   <button class="tab-btn" data-tab="reports">📋 Reports</button>
   <button class="tab-btn" data-tab="bookings-archive">📚 Bookings Archive</button>
 </nav>
@@ -287,6 +303,78 @@
     </div>
   </div>
   <div class="tab-panel" id="tab-checklists"><div class="card"><div class="card-title">Vehicle Checklists</div><div id="checklist-list"></div></div></div>
+
+  <!-- ═══ TRAFFIC FINES TAB ═══ -->
+  <div class="tab-panel" id="tab-traffic-fines">
+    <div class="card">
+      <div class="card-header">
+        <div>
+          <div class="card-title">Traffic Fine Lookup</div>
+          <div class="card-subtitle">Find who was assigned to a vehicle at the exact fine date/time.</div>
+        </div>
+      </div>
+      <form id="fine-lookup-form">
+        <div class="form-row">
+          <div class="form-group">
+            <label>Vehicle <span class="required">*</span></label>
+            <select id="fine-vehicle" class="form-control" required>
+              <option value="">Loading vehicles…</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Fine Date &amp; Time <span class="required">*</span></label>
+            <input type="datetime-local" id="fine-timestamp" class="form-control" step="1" required>
+          </div>
+          <div class="form-group" style="align-self:flex-end">
+            <button type="submit" class="btn btn-amber btn-full">Lookup Driver</button>
+          </div>
+        </div>
+      </form>
+      <div id="fine-lookup-result" style="margin-top:12px"></div>
+    </div>
+
+    <div class="card" id="fine-log-card" style="display:none">
+      <div class="card-header">
+        <div>
+          <div class="card-title">Log Fine &amp; Notify Driver</div>
+          <div class="card-subtitle">A profile email or alternate email is required before the fine can be saved.</div>
+        </div>
+      </div>
+      <form id="fine-log-form">
+        <input type="hidden" id="fine-booking-id">
+        <input type="hidden" id="fine-driver-id">
+        <input type="hidden" id="fine-vehicle-reg">
+        <input type="hidden" id="fine-log-timestamp">
+        <div class="form-row">
+          <div class="form-group"><label>Fine Reference</label><input type="text" id="fine-reference" class="form-control" placeholder="Notice/reference number"></div>
+          <div class="form-group"><label>Amount</label><input type="number" min="0" step="0.01" id="fine-amount" class="form-control" placeholder="0.00"></div>
+        </div>
+        <div class="form-row">
+          <div class="form-group"><label>Location</label><input type="text" id="fine-location" class="form-control" placeholder="Camera / road / area"></div>
+          <div class="form-group"><label>Alternate Notification Email</label><input type="email" id="fine-notification-email" class="form-control" placeholder="Optional if driver profile has email"></div>
+        </div>
+        <div class="form-group"><label>Description / Notes</label><textarea id="fine-description" class="form-control" rows="3" placeholder="Fine details, issuing authority, notes…"></textarea></div>
+        <button type="submit" class="btn btn-amber btn-full">Save Fine &amp; Send Email</button>
+      </form>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <div>
+          <div class="card-title">Logged Traffic Fines</div>
+          <div class="card-subtitle">Most recent 100 fines.</div>
+        </div>
+        <button type="button" class="btn btn-outline btn-sm" onclick="loadAdminTrafficFines()">Refresh</button>
+      </div>
+      <div class="table-wrapper">
+        <table>
+          <thead><tr><th>Fine Time</th><th>Vehicle</th><th>Driver</th><th>Booking</th><th>Reference</th><th>Amount</th><th>Email</th></tr></thead>
+          <tbody id="traffic-fines-tbody"><tr><td colspan="7"><div class="spinner"></div></td></tr></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
   <div class="tab-panel" id="tab-bookings-archive">
     <div class="card">
       <div class="card-title">Bookings Archive</div>
@@ -344,6 +432,38 @@
         <div class="form-group"><label>Assign Driver</label><select id="booking-driver" class="form-control"><option value="">— Unassigned —</option></select></div>
       </div>
       <div class="form-group"><label>Assign Vehicle</label><select id="booking-vehicle" class="form-control"><option value="">— Unassigned —</option></select></div>
+      <!-- RENTED VEHICLE TOGGLE -->
+      <div class="form-group" id="rented-vehicle-section">
+        <label style="display:flex;align-items:center;gap:10px;cursor:pointer">
+          <input type="checkbox" id="booking-is-rented" style="width:18px;height:18px;accent-color:var(--amber)">
+          <span style="font-size:.88rem;font-weight:600;color:var(--navy)">
+            This booking uses a <strong>rented vehicle</strong> (not from the owned fleet)
+          </span>
+        </label>
+      </div>
+
+      <div id="rented-vehicle-fields" style="display:none;background:#fffbeb;border:1.5px solid var(--amber);border-radius:var(--radius);padding:14px;margin-bottom:14px">
+        <div style="font-size:.78rem;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--amber-dark);margin-bottom:10px">
+          🚗 Rented Vehicle Details
+        </div>
+        <div class="form-group" style="margin-bottom:10px">
+          <label for="booking-rented-vehicle-select">Select existing rented vehicle</label>
+          <select id="booking-rented-vehicle-select" class="form-control">
+            <option value="">— or enter details below —</option>
+          </select>
+        </div>
+        <div class="form-row">
+          <div class="form-group" style="margin-bottom:0">
+            <label for="booking-rented-reg">Registration No <span class="required">*</span></label>
+            <input type="text" id="booking-rented-reg" class="form-control" placeholder="e.g. CA 123 456">
+          </div>
+          <div class="form-group" style="margin-bottom:0">
+            <label for="booking-rented-model">Make / Model <span class="required">*</span></label>
+            <input type="text" id="booking-rented-model" class="form-control" placeholder="e.g. Toyota Quantum">
+          </div>
+        </div>
+        <input type="hidden" id="booking-rented-vehicle-id">
+      </div>
       <div class="form-group">
         <label>Status</label>
         <select id="booking-status" class="form-control">
