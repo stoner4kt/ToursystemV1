@@ -142,7 +142,7 @@ async function syncPendingInspections() {
       if (mediaFiles && mediaFiles.length > 0) {
         const uploadedUrls = [];
         for (const fileData of mediaFiles) {
-          try { uploadedUrls.push(await uploadToCloudinary(fileData.blob, fileData.name)); }
+          try { uploadedUrls.push(await uploadToCloudinary(fileData.blob, 'inspections')); }
           catch (err) { console.warn('Media upload failed during sync:', err); }
         }
         payload.media_urls = uploadedUrls;
@@ -167,14 +167,83 @@ async function updateSyncBadge() {
 }
 
 // ── Cloudinary Upload ─────────────────────────────────────────
+const UPLOAD_ALLOWED_TYPES = new Set([
+  'image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'image/gif',
+  'application/pdf',
+  'application/msword',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'application/vnd.ms-excel',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+]);
+const UPLOAD_MAX_BYTES = 10 * 1024 * 1024; // 10 MB
+
 async function uploadToCloudinary(file, folder = 'inspections') {
-  const formData = new FormData();
-  formData.append('file', file);
-  formData.append('upload_preset', CONFIG.CLOUDINARY_UPLOAD_PRESET);
-  formData.append('folder', `inyathi/${folder}`);
-  const res = await fetch(`https://api.cloudinary.com/v1_1/${CONFIG.CLOUDINARY_CLOUD_NAME}/auto/upload`, { method: 'POST', body: formData });
-  if (!res.ok) throw new Error('Cloudinary upload failed');
-  return (await res.json()).secure_url;
+  if (!file) throw new Error('No file provided');
+
+  const fullFolder = folder.startsWith('inyathi/') ? folder : `inyathi/${folder}`;
+
+  if (!UPLOAD_ALLOWED_TYPES.has(file.type)) {
+    throw new Error(`File type not allowed: ${file.name || file.type}`);
+  }
+  if (file.size > UPLOAD_MAX_BYTES) {
+    throw new Error(`File exceeds 10MB limit: ${file.name || 'file'}`);
+  }
+
+  // Get a signed upload token from the edge function
+  let sigData;
+  try {
+    const { data: { session } } = await sb.auth.getSession();
+    const { data, error } = await sb.functions.invoke('sign-upload', {
+      body: { folder: fullFolder },
+      headers: session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {},
+    });
+    if (error) throw new Error(error.message);
+    sigData = data;
+  } catch (err) {
+    console.error('[uploadToCloudinary] sign-upload failed:', err);
+    throw new Error('Could not generate upload signature.');
+  }
+
+  if (!sigData?.signature || !sigData?.api_key || !sigData?.timestamp) {
+    throw new Error('Upload preset misconfigured.');
+  }
+
+  const isRaw = file.type === 'application/pdf' ||
+    file.type.includes('word') || file.type.includes('excel') ||
+    file.type.includes('spreadsheet') || file.type.includes('ms-excel');
+  const resourceType = isRaw ? 'raw' : 'auto';
+
+  let lastError;
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('api_key', String(sigData.api_key));
+      formData.append('timestamp', String(sigData.timestamp));
+      formData.append('signature', sigData.signature);
+      formData.append('upload_preset', sigData.upload_preset);
+      formData.append('folder', sigData.folder);
+
+      const res = await fetch(
+        `https://api.cloudinary.com/v1_1/${sigData.cloud_name}/${resourceType}/upload`,
+        { method: 'POST', body: formData },
+      );
+      const json = await res.json();
+
+      if (!res.ok) {
+        const msg = json.error?.message || '';
+        console.error(`[uploadToCloudinary] attempt ${attempt} rejected:`, msg);
+        if (msg.toLowerCase().includes('preset')) throw new Error('Upload preset misconfigured.');
+        throw new Error('Cloudinary upload rejected the file.');
+      }
+
+      return json.secure_url;
+    } catch (err) {
+      lastError = err;
+      if (attempt < 3) await new Promise((r) => setTimeout(r, attempt * 1200));
+    }
+  }
+  throw lastError;
 }
 
 // ── Fault Alert ───────────────────────────────────────────────

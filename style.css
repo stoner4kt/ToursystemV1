@@ -239,7 +239,7 @@ textarea.form-control { resize: vertical; min-height: 80px; }
 select.form-control { cursor: pointer; }
 
 .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-@media (max-width: 420px) { .form-row { grid-template-columns: 1fr; } }
+
 
 /* ── STATUS BADGES ─────────────────────────────────────────── */
 .badge {
@@ -492,7 +492,8 @@ tbody td { padding: 9px 10px; border-bottom: 1px solid var(--border); vertical-a
 
 /* ── STATS ROW ─────────────────────────────────────────────── */
 .stats-row { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-bottom: 14px; }
-@media (min-width: 480px) { .stats-row { grid-template-columns: repeat(4, 1fr); } }
+@media (min-width: 481px) { .stats-row { grid-template-columns: repeat(3, 1fr); } }
+@media (min-width: 1025px) { .stats-row { grid-template-columns: repeat(4, 1fr); } }
 .stat-card { background: var(--surface); border-radius: var(--radius); padding: 14px; box-shadow: var(--shadow); text-align: center; }
 .stat-value { font-size: 1.5rem; font-weight: 800; color: var(--navy); }
 .stat-label { font-size: .73rem; color: var(--text-muted); margin-top: 2px; }
@@ -530,7 +531,7 @@ tbody td { padding: 9px 10px; border-bottom: 1px solid var(--border); vertical-a
   .media-preview { grid-template-columns: repeat(5, 1fr); }
   .login-card { padding: 44px 36px; }
 }
-@media (min-width: 1024px) {
+@media (min-width: 1025px) {
   .main { max-width: 960px; }
 }
 
