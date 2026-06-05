@@ -51,6 +51,53 @@ document.querySelectorAll('.tab-btn').forEach((btn) => {
   btn.addEventListener('click', () => switchDriverTab(btn.dataset.tab));
 });
 
+function normalizeItineraryMetadata(itinerary) {
+  if (!itinerary) return null;
+
+  let meta = itinerary;
+  if (typeof itinerary === 'string') {
+    try {
+      meta = JSON.parse(itinerary);
+    } catch (_) {
+      meta = { url: itinerary };
+    }
+  }
+
+  if (!meta || typeof meta !== 'object') return null;
+  if (meta.public_id) return { ...meta, resource_type: meta.resource_type || 'raw' };
+  if (meta.url) return meta;
+  return null;
+}
+
+function itineraryLinkAttrs(meta) {
+  if (!meta?.public_id) return '';
+  return `data-public-id="${escapeHtml(meta.public_id)}" data-resource-type="${escapeHtml(meta.resource_type || 'raw')}" data-itinerary-secure-download="true"`;
+}
+
+function renderItineraryLink(itinerary, label = '📋 View Itinerary', className = '') {
+  const meta = normalizeItineraryMetadata(itinerary);
+  if (!meta) return '';
+
+  const href = meta.public_id ? '#' : meta.url;
+  const classAttr = className ? ` class="${escapeHtml(className)}"` : '';
+  return `<a href="${escapeHtml(href)}" target="_blank" rel="noopener"${classAttr} ${itineraryLinkAttrs(meta)}>${escapeHtml(label)}</a>`;
+}
+
+async function handleSecureItineraryLinkClick(event) {
+  const link = event.target.closest('a[data-itinerary-secure-download="true"]');
+  if (!link) return;
+  event.preventDefault();
+  const signedUrl = await getSignedUrl(link.dataset.publicId, link.dataset.resourceType || 'raw', false);
+  if (!signedUrl) return toast('Could not generate secure link', 'error');
+  window.open(signedUrl, '_blank', 'noopener');
+}
+
+function bindSecureItineraryLinks(container) {
+  if (!container || container.dataset.secureItineraryHandlerBound) return;
+  container.addEventListener('click', handleSecureItineraryLinkClick);
+  container.dataset.secureItineraryHandlerBound = 'true';
+}
+
 // ── DRIVER TASKS ──────────────────────────────────────────────
 async function loadDriverTasks() {
   if (!currentProfile?.driver_id) {
@@ -106,11 +153,13 @@ function renderTaskList(containerId, bookings, emptyMsg) {
     return;
   }
 
+  bindSecureItineraryLinks(container);
   container.innerHTML = bookings.map((b) => {
     const statusClass = `status-${b.status}`;
     const isActive = b.start_date <= new Date().toISOString().split('T')[0] && b.end_date >= new Date().toISOString().split('T')[0];
     const docs = Array.isArray(b.booking_documents) ? b.booking_documents : [];
     const canViewDocs = b.assigned_driver_id === currentProfile?.driver_id && docs.length > 0;
+    const itineraryLink = renderItineraryLink(b.itinerary_url, '📋 View Itinerary', 'btn btn-sm btn-outline');
     return `
       <div class="task-card ${statusClass}">
         <div class="task-row">
@@ -131,7 +180,7 @@ function renderTaskList(containerId, bookings, emptyMsg) {
           <div style="margin-top:10px">
             <a href="inspection.html" class="btn btn-amber btn-sm">+ Start Inspection</a>
           </div>` : ''}
-        ${b.itinerary_url ? `<div style="margin-top:8px"><a href="${b.itinerary_url}" target="_blank" rel="noopener" class="btn btn-sm btn-outline">📋 View Itinerary</a></div>` : ''}
+        ${itineraryLink ? `<div style="margin-top:8px">${itineraryLink}</div>` : ''}
         ${canViewDocs ? `<div style="margin-top:8px"><button type="button" class="btn btn-sm btn-outline" onclick="toggleBookingDocuments('${b.id}')">📄 Documents (${docs.length})</button><div id="task-docs-${b.id}" style="display:none;margin-top:6px">${docs.map((d)=>`<div><a href="${d.url}" target="_blank" rel="noopener">${d.filename || 'Document'}</a></div>`).join('')}</div></div>` : ''}
         ${b.notes ? `<div style="font-size:.78rem;color:var(--text-muted);margin-top:6px">📝 ${b.notes}</div>` : ''}
       </div>`;
