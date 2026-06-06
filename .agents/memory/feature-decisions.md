@@ -44,6 +44,16 @@ description: Key decisions made when implementing the 8 production features for 
 - `.main` gets `margin-left: var(--sidebar-w)`, `max-width: none`, `padding: 28px 36px`
 - `.sidebar-close` and `.sidebar-overlay` hidden on desktop via CSS
 
+## Cloudinary Upload Architecture (definitive)
+- `sign-upload` edge function in `supabase/functions/sign-upload/index.ts` is the ONLY path for getting upload credentials
+- Browser calls `sb.functions.invoke('sign-upload', { body: { folder } })` → gets `{ signature, timestamp, api_key, cloud_name, upload_preset, folder, type: 'upload' }`
+- `type=upload` is signed AND sent in FormData to force public delivery, overriding any 'authenticated' preset setting on Cloudinary — this means `secure_url` values are directly accessible without signed delivery URLs
+- `getDocumentUrl(doc)` in `app.js` handles backward-compat for malformed `{"0":"h","1":"t",...}` records (string spread into object)
+- All document viewers (`renderBookingDocumentsList`, `downloadBookingDocuments`, `driver-dashboard.js`) call `getDocumentUrl(d)` — NEVER `d.url` directly
+- Migration SQL: `migrations/fix_malformed_booking_documents.sql` — run once in Supabase SQL Editor to repair existing bad records
+
+**Why public delivery:** Supabase auth already controls who can log in; document links are only shown to authenticated users. Authenticated Cloudinary delivery added no real security but required separate signed delivery URL generation (which would expire and break stored links).
+
 ## Edge Functions deployment checklist
 Before setting `CONFIG.OTP_ENABLED = true`:
 1. Run `supabase functions deploy send-otp-email` 
