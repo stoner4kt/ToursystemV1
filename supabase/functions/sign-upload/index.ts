@@ -29,7 +29,7 @@ async function sha1(message: string): Promise<string> {
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
 
-  const json = (body: object, status = 200) =>
+  const respond = (body: object, status = 200) =>
     new Response(JSON.stringify(body), {
       status,
       headers: { ...CORS, "Content-Type": "application/json" },
@@ -37,7 +37,7 @@ Deno.serve(async (req) => {
 
   try {
     const authHeader = req.headers.get("Authorization");
-    if (!authHeader) return json({ error: "User not authorized to upload." }, 401);
+    if (!authHeader) return respond({ error: "User not authorized to upload." }, 401);
 
     const sb = createClient(
       Deno.env.get("SUPABASE_URL")!,
@@ -46,33 +46,43 @@ Deno.serve(async (req) => {
     );
 
     const { data: { user }, error: authErr } = await sb.auth.getUser();
-    if (authErr || !user) return json({ error: "User not authorized to upload." }, 401);
+    if (authErr || !user) return respond({ error: "User not authorized to upload." }, 401);
 
     const body = await req.json().catch(() => ({}));
     const { folder } = body as { folder?: string };
 
     if (!folder || !ALLOWED_FOLDERS.has(folder)) {
-      return json({ error: `Upload folder not allowed: ${folder ?? "(none)"}` }, 400);
+      return respond({ error: `Upload folder not allowed: ${folder ?? "(none)"}` }, 400);
     }
 
     if (!CLOUD_NAME || !API_KEY || !API_SECRET) {
       console.error("[sign-upload] Missing Cloudinary env vars");
-      return json({ error: "Upload preset misconfigured." }, 500);
+      return respond({ error: "Upload preset misconfigured." }, 500);
     }
 
     const timestamp = Math.round(Date.now() / 1000);
 
-    // Parameters signed: folder, timestamp, upload_preset — sorted alphabetically
-    const paramsStr  = `folder=${folder}&timestamp=${timestamp}&upload_preset=${UPLOAD_PRESET}`;
-    const signature  = await sha1(`${paramsStr}${API_SECRET}`);
+    // Parameters signed — sorted alphabetically.
+    // type=upload forces public delivery, overriding any 'authenticated' preset setting.
+    // This means secure_url values are directly accessible without signed delivery URLs.
+    const paramsStr = `folder=${folder}&timestamp=${timestamp}&type=upload&upload_preset=${UPLOAD_PRESET}`;
+    const signature = await sha1(`${paramsStr}${API_SECRET}`);
 
     console.log(
-      `[sign-upload] user=${user.id} folder=${folder} preset=${UPLOAD_PRESET} ts=${timestamp}`,
+      `[sign-upload] user=${user.id} folder=${folder} preset=${UPLOAD_PRESET} type=upload ts=${timestamp}`,
     );
 
-    return json({ signature, timestamp, api_key: API_KEY, cloud_name: CLOUD_NAME, upload_preset: UPLOAD_PRESET, folder });
+    return respond({
+      signature,
+      timestamp,
+      api_key: API_KEY,
+      cloud_name: CLOUD_NAME,
+      upload_preset: UPLOAD_PRESET,
+      folder,
+      type: "upload",
+    });
   } catch (err) {
     console.error("[sign-upload] unexpected error:", err);
-    return json({ error: "Could not generate upload signature." }, 500);
+    return respond({ error: "Could not generate upload signature." }, 500);
   }
 });

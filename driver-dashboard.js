@@ -125,7 +125,7 @@ function renderTaskList(containerId, bookings, emptyMsg) {
             <a href="inspection.html" class="btn btn-amber btn-sm">+ Start Inspection</a>
           </div>` : ''}
         ${b.itinerary_url ? `<div style="margin-top:8px"><a href="${b.itinerary_url}" target="_blank" rel="noopener" class="btn btn-sm btn-outline">📋 View Itinerary</a></div>` : ''}
-        ${canViewDocs ? `<div style="margin-top:8px"><button type="button" class="btn btn-sm btn-outline" onclick="toggleBookingDocuments('${b.id}')">📄 Documents (${docs.length})</button><div id="task-docs-${b.id}" style="display:none;margin-top:6px">${docs.map((d)=>`<div><a href="${d.url}" target="_blank" rel="noopener">${d.filename || 'Document'}</a></div>`).join('')}</div></div>` : ''}
+        ${canViewDocs ? `<div style="margin-top:8px"><button type="button" class="btn btn-sm btn-outline" onclick="toggleBookingDocuments('${b.id}')">📄 Documents (${docs.length})</button><div id="task-docs-${b.id}" style="display:none;margin-top:6px">${docs.map((d)=>{const dUrl=getDocumentUrl(d);return `<div><a href="${dUrl||'#'}" target="_blank" rel="noopener">${d.filename||'Document'}</a></div>`;}).join('')}</div></div>` : ''}
         ${b.notes ? `<div style="font-size:.78rem;color:var(--text-muted);margin-top:6px">📝 ${b.notes}</div>` : ''}
       </div>`;
   }).join('');

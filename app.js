@@ -166,6 +166,26 @@ async function updateSyncBadge() {
   });
 }
 
+// ── Cloudinary Helpers ────────────────────────────────────────
+/**
+ * Safely extract a document URL from any stored format.
+ * Handles:
+ *   - Correct format: { url: "https://..." }
+ *   - Legacy malformed: { "0":"h","1":"t",... } (string spread into object)
+ *   - Plain string (direct URL)
+ */
+function getDocumentUrl(doc) {
+  if (!doc) return '';
+  if (typeof doc === 'string') return doc;
+  if (doc.url) return doc.url;
+  // Reconstruct from numeric keys (string-spread bug)
+  const numericKeys = Object.keys(doc)
+    .filter((k) => /^\d+$/.test(k))
+    .sort((a, b) => Number(a) - Number(b));
+  if (numericKeys.length > 0) return numericKeys.map((k) => doc[k]).join('');
+  return '';
+}
+
 // ── Cloudinary Upload ─────────────────────────────────────────
 const UPLOAD_ALLOWED_TYPES = new Set([
   'image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'image/gif',
@@ -223,6 +243,8 @@ async function uploadToCloudinary(file, folder = 'inspections') {
       formData.append('signature', sigData.signature);
       formData.append('upload_preset', sigData.upload_preset);
       formData.append('folder', sigData.folder);
+      // Force public delivery so secure_url is directly accessible (no signed delivery needed)
+      formData.append('type', sigData.type || 'upload');
 
       const res = await fetch(
         `https://api.cloudinary.com/v1_1/${sigData.cloud_name}/${resourceType}/upload`,

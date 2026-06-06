@@ -198,18 +198,20 @@ function renderBookingDocumentsList() {
   }
   const isAdmin = currentProfile?.role === 'admin';
   const items = currentBookingDocuments.map((d, i) => {
+    const docUrl = getDocumentUrl(d);
     const name = d.filename || 'Document';
     const isPdf  = /\.pdf$/i.test(name);
     const isImg  = /\.(jpg|jpeg|png|gif|webp)$/i.test(name);
     const isWord = /\.(doc|docx)$/i.test(name);
     const icon   = isPdf ? '📄' : isWord ? '📝' : isImg ? '' : '📎';
     const preview = isImg
-      ? `<img src="${d.url}" loading="lazy" alt="${name}" style="max-height:60px;border-radius:4px;object-fit:cover;flex-shrink:0">`
+      ? `<img src="${docUrl}" loading="lazy" alt="${name}" style="max-height:60px;border-radius:4px;object-fit:cover;flex-shrink:0">`
       : `<span class="doc-preview-icon">${icon}</span>`;
+    if (!docUrl) console.error('[renderBookingDocumentsList] Missing document URL', d);
     return `<div class="doc-preview-item">
       ${preview}
       <div class="doc-preview-meta">
-        <a href="${d.url || '#'}" target="_blank" rel="noopener" class="doc-preview-name">${name}</a>
+        <a href="${docUrl || '#'}" target="_blank" rel="noopener" class="doc-preview-name">${name}</a>
         <span>${d.size ? Math.round(d.size / 1024) + ' KB' : '—'} · ${d.uploaded_at ? formatDateTime(d.uploaded_at) : '—'}</span>
       </div>
       ${isAdmin ? `<button type="button" class="btn btn-sm btn-danger" onclick="removeBookingDocument(${i})" title="Remove document" style="flex-shrink:0">🗑</button>` : ''}
@@ -226,12 +228,13 @@ function renderBookingDocumentsList() {
 function renderItineraryPreview(itinerary) {
   const el = document.getElementById('booking-itinerary-preview');
   if (!el) return;
-  if (!itinerary?.url) { el.innerHTML = ''; return; }
-  const isPdf = /\.pdf$/i.test(itinerary.filename || '');
+  const itinUrl = getDocumentUrl(itinerary);
+  if (!itinUrl) { el.innerHTML = ''; return; }
+  const isPdf = /\.pdf$/i.test(itinerary?.filename || '');
   el.innerHTML = `<div class="doc-preview-item">
     <span class="doc-preview-icon">${isPdf ? '📄' : '📎'}</span>
     <div class="doc-preview-meta">
-      <a href="${itinerary.url}" target="_blank" rel="noopener" class="doc-preview-name">${itinerary.filename || 'Itinerary'}</a>
+      <a href="${itinUrl}" target="_blank" rel="noopener" class="doc-preview-name">${itinerary?.filename || 'Itinerary'}</a>
       <span>Current itinerary · Click to open</span>
     </div>
   </div>`;
@@ -382,7 +385,11 @@ async function loadBookingsArchive() {
 async function downloadBookingDocuments(bookingId) {
   const { data } = await sb.from('bookings').select('booking_documents').eq('id', bookingId).single();
   const docs = Array.isArray(data?.booking_documents) ? data.booking_documents : [];
-  docs.forEach((d) => window.open(d.url, '_blank', 'noopener'));
+  docs.forEach((d) => {
+    const url = getDocumentUrl(d);
+    if (!url) { console.error('[downloadBookingDocuments] Missing document URL', d); return; }
+    window.open(url, '_blank', 'noopener');
+  });
 }
 window.downloadBookingDocuments = downloadBookingDocuments;
 
