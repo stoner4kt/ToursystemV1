@@ -25,6 +25,7 @@
   else if (hash === '#checklists') switchDriverTab('checklists');
   else if (hash === '#incidents') switchDriverTab('incidents');
   else if (hash === '#documents') switchDriverTab('documents');
+  else if (hash === '#fines') switchDriverTab('fines');
   else switchDriverTab('tasks');
 })();
 
@@ -43,11 +44,59 @@ async function switchDriverTab(target) {
   if(target==='incidents') await loadDriverIncidents();
   if(target==='documents') await loadMyDocuments();
   if(target==='transfer-recon') await loadTransferRecon();
+  if(target==='fines') await loadDriverFines();
 }
 
 document.querySelectorAll('.tab-btn').forEach((btn) => {
   btn.addEventListener('click', () => switchDriverTab(btn.dataset.tab));
 });
+
+function normalizeItineraryMetadata(itinerary) {
+  if (!itinerary) return null;
+
+  let meta = itinerary;
+  if (typeof itinerary === 'string') {
+    try {
+      meta = JSON.parse(itinerary);
+    } catch (_) {
+      meta = { url: itinerary };
+    }
+  }
+
+  if (!meta || typeof meta !== 'object') return null;
+  if (meta.public_id) return { ...meta, resource_type: meta.resource_type || 'raw' };
+  if (meta.url) return meta;
+  return null;
+}
+
+function itineraryLinkAttrs(meta) {
+  if (!meta?.public_id) return '';
+  return `data-public-id="${escapeHtml(meta.public_id)}" data-resource-type="${escapeHtml(meta.resource_type || 'raw')}" data-itinerary-secure-download="true"`;
+}
+
+function renderItineraryLink(itinerary, label = '📋 View Itinerary', className = '') {
+  const meta = normalizeItineraryMetadata(itinerary);
+  if (!meta) return '';
+
+  const href = meta.public_id ? '#' : meta.url;
+  const classAttr = className ? ` class="${escapeHtml(className)}"` : '';
+  return `<a href="${escapeHtml(href)}" target="_blank" rel="noopener"${classAttr} ${itineraryLinkAttrs(meta)}>${escapeHtml(label)}</a>`;
+}
+
+async function handleSecureItineraryLinkClick(event) {
+  const link = event.target.closest('a[data-itinerary-secure-download="true"]');
+  if (!link) return;
+  event.preventDefault();
+  const signedUrl = await getSignedUrl(link.dataset.publicId, link.dataset.resourceType || 'raw', false);
+  if (!signedUrl) return toast('Could not generate secure link', 'error');
+  window.open(signedUrl, '_blank', 'noopener');
+}
+
+function bindSecureItineraryLinks(container) {
+  if (!container || container.dataset.secureItineraryHandlerBound) return;
+  container.addEventListener('click', handleSecureItineraryLinkClick);
+  container.dataset.secureItineraryHandlerBound = 'true';
+}
 
 // ── DRIVER TASKS ──────────────────────────────────────────────
 async function loadDriverTasks() {
@@ -104,18 +153,25 @@ function renderTaskList(containerId, bookings, emptyMsg) {
     return;
   }
 
+  bindSecureItineraryLinks(container);
   container.innerHTML = bookings.map((b) => {
     const statusClass = `status-${b.status}`;
     const isActive = b.start_date <= new Date().toISOString().split('T')[0] && b.end_date >= new Date().toISOString().split('T')[0];
     const docs = Array.isArray(b.booking_documents) ? b.booking_documents : [];
     const canViewDocs = b.assigned_driver_id === currentProfile?.driver_id && docs.length > 0;
+    const itineraryLink = renderItineraryLink(b.itinerary_url, '📋 View Itinerary', 'btn btn-sm btn-outline');
     return `
       <div class="task-card ${statusClass}">
         <div class="task-row">
           <div class="task-title">${b.client_name}</div>
           ${statusBadge(b.status)}
         </div>
-        <div class="task-meta">${b.tour_reference || b.route || 'Tour Ref TBC'} · ${b.assigned_vehicle_reg || 'Vehicle TBC'}</div>
+        <div class="task-meta">
+          ${b.tour_reference || b.route || 'Tour Ref TBC'}
+          · ${b.is_rented_vehicle
+              ? `<span class="badge badge-amber" style="font-size:.72rem">🚗 Rented: ${b.rented_vehicle_reg || 'TBC'}</span>`
+              : (b.assigned_vehicle_reg || 'Vehicle TBC')}
+        </div>
         <div class="task-dates">
           📅 ${formatDate(b.start_date)} → ${formatDate(b.end_date)}
           · Ref: ${b.invoice_no}
@@ -393,7 +449,7 @@ async function loadReconHistory() {
   if (!container) return;
   const { data, error } = await sb
     .from('recon_sheets')
-    .select('id,week_start,week_end,status,submitted_at,edit_request_status,edit_request_reason,edit_request_rejection_reason')
+    .select('id,week_start,week_end,status,submitted_at,edit_request_status,edit_request_reason')
     .eq('driver_id', currentProfile.driver_id)
     .order('week_start', { ascending: false })
     .limit(10);
@@ -406,7 +462,7 @@ async function loadReconHistory() {
       : s.edit_request_status === 'approved'
       ? `<span style="color:var(--green);font-size:.78rem;font-weight:700">✓ Edit approved</span>`
       : s.edit_request_status === 'rejected'
-      ? `<span style="color:var(--red);font-size:.78rem" title="${s.edit_request_rejection_reason || ''}">✗ Request rejected</span>`
+      ? `<span style="color:var(--red);font-size:.78rem" title="Rejected by admin">✗ Request rejected</span>`
       : '';
     return `
     <div class="inspection-item">
@@ -475,3 +531,59 @@ async function loadTransferReconHistory() {
       ${statusBadge(s.status)}
     </div>`).join('');
 }
+
+// ── DRIVER TRAFFIC FINES ─────────────────────────────────────
+function driverFineEscapeHtml(value) {
+  return String(value ?? '')
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#039;');
+}
+
+function driverFineMoney(amount) {
+  if (amount === null || amount === undefined || amount === '') return '—';
+  const numeric = Number(amount);
+  return Number.isFinite(numeric) ? `R ${numeric.toFixed(2)}` : driverFineEscapeHtml(amount);
+}
+
+async function loadDriverFines() {
+  const container = document.getElementById('driver-fines-list');
+  if (!container) return;
+  if (!currentProfile?.driver_id) {
+    container.innerHTML = '<div class="empty-state"><div class="empty-icon">👤</div><p>Your driver profile is not fully set up. Contact your admin.</p></div>';
+    return;
+  }
+
+  container.innerHTML = '<div class="spinner"></div>';
+  const { data, error } = await sb
+    .from('traffic_fines')
+    .select('*, bookings!traffic_fines_booking_id_fkey(invoice_no,client_name,route,start_date,end_date)')
+    .eq('driver_id', currentProfile.driver_id)
+    .order('fine_timestamp', { ascending: false });
+
+  if (error) {
+    container.innerHTML = `<p style="color:var(--red)">Unable to load fines: ${driverFineEscapeHtml(error.message)}</p>`;
+    return;
+  }
+
+  if (!data?.length) {
+    container.innerHTML = '<div class="empty-state"><div class="empty-icon">✅</div><p>No traffic fines have been logged to your profile.</p></div>';
+    return;
+  }
+
+  container.innerHTML = data.map((fine) => `
+    <div class="task-card">
+      <div class="task-row">
+        <div class="task-title">${driverFineEscapeHtml(fine.fine_reference || 'Traffic Fine')}</div>
+        ${fine.email_sent ? '<span class="badge badge-green">Email Sent</span>' : '<span class="badge badge-amber">Logged</span>'}
+      </div>
+      <div class="task-meta">${driverFineEscapeHtml(fine.vehicle_reg)} · ${formatDateTime(fine.fine_timestamp)} · ${driverFineMoney(fine.amount)}</div>
+      <div class="task-dates">Booking: ${driverFineEscapeHtml(fine.bookings?.invoice_no || fine.booking_id)} · ${driverFineEscapeHtml(fine.bookings?.client_name || '—')}</div>
+      ${fine.location ? `<div style="font-size:.82rem;margin-top:6px">📍 ${driverFineEscapeHtml(fine.location)}</div>` : ''}
+      ${fine.description ? `<div style="font-size:.78rem;color:var(--text-muted);margin-top:6px">📝 ${driverFineEscapeHtml(fine.description)}</div>` : ''}
+    </div>`).join('');
+}
+
+window.loadDriverFines = loadDriverFines;

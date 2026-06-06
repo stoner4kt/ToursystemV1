@@ -102,6 +102,12 @@ CREATE TABLE IF NOT EXISTS public.recon_sheets (
   health_issues        TEXT,
   driver_notes         TEXT,
   admin_review_notes   TEXT,
+  edit_request_status TEXT DEFAULT 'none' CHECK (edit_request_status IN ('none','pending','approved','rejected')),
+  edit_request_reason TEXT,
+  edit_request_sent_at TIMESTAMPTZ,
+  edit_request_approved_by UUID REFERENCES public.profiles(id),
+  edit_request_approved_at TIMESTAMPTZ,
+  edit_request_rejection_reason TEXT,
   status            TEXT NOT NULL DEFAULT 'draft' CHECK (status IN ('draft', 'submitted', 'reviewed')),
   submitted_at      TIMESTAMPTZ,
   reviewed_by       UUID REFERENCES public.profiles(id),
@@ -369,3 +375,142 @@ CREATE POLICY "edit_log_admin" ON public.booking_edit_log
 --     )
 --   $$
 -- );
+
+-- ══════════════════════════════════════════════════════════════
+-- VEHICLE EXPENSES & DAMAGES MODULE
+-- ══════════════════════════════════════════════════════════════
+
+CREATE TABLE IF NOT EXISTS public.vehicle_expenses (
+  id                  UUID          PRIMARY KEY DEFAULT gen_random_uuid(),
+  vehicle_reg         TEXT          NOT NULL REFERENCES public.vehicles(registration_no) ON DELETE RESTRICT,
+  driver_id           TEXT          REFERENCES public.profiles(driver_id),         -- NULL when admin logs directly
+  logged_by_admin_id  UUID          REFERENCES public.profiles(id),                -- NULL when driver submits
+  expense_type        TEXT          NOT NULL
+                                    CHECK (expense_type IN ('Tyres','Service','Damage','Repair','Accident','Other')),
+  description         TEXT,
+  amount              NUMERIC(12,2) NOT NULL DEFAULT 0 CHECK (amount >= 0),
+  expense_date        DATE          NOT NULL,
+  -- Cloudinary uploads stored as JSONB arrays:
+  -- Each element: { url TEXT, filename TEXT, size INT, resource_type TEXT, uploaded_at TIMESTAMPTZ }
+  document_urls       JSONB         NOT NULL DEFAULT '[]',
+  photo_urls          JSONB         NOT NULL DEFAULT '[]',
+  status              TEXT          NOT NULL DEFAULT 'pending'
+                                    CHECK (status IN ('pending','approved','rejected')),
+  submitted_at        TIMESTAMPTZ   NOT NULL DEFAULT NOW(),
+  -- Admin approval fields
+  reviewed_by         UUID          REFERENCES public.profiles(id),
+  reviewed_at         TIMESTAMPTZ,
+  rejection_reason    TEXT,
+  -- Notification tracking
+  alert_sent          BOOLEAN       NOT NULL DEFAULT false,
+  driver_notified_at  TIMESTAMPTZ,
+  created_at          TIMESTAMPTZ   NOT NULL DEFAULT NOW(),
+  updated_at          TIMESTAMPTZ   NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_expenses_vehicle  ON public.vehicle_expenses(vehicle_reg);
+CREATE INDEX IF NOT EXISTS idx_expenses_driver   ON public.vehicle_expenses(driver_id);
+CREATE INDEX IF NOT EXISTS idx_expenses_status   ON public.vehicle_expenses(status);
+CREATE INDEX IF NOT EXISTS idx_expenses_date     ON public.vehicle_expenses(expense_date DESC);
+CREATE INDEX IF NOT EXISTS idx_expenses_created  ON public.vehicle_expenses(created_at DESC);
+
+CREATE TRIGGER trg_expenses_updated_at
+  BEFORE UPDATE ON public.vehicle_expenses
+  FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
+
+ALTER TABLE public.vehicle_expenses ENABLE ROW LEVEL SECURITY;
+
+-- Drivers: read own records only
+CREATE POLICY "expenses_driver_select" ON public.vehicle_expenses FOR SELECT
+  USING (driver_id = (SELECT driver_id FROM public.profiles WHERE id = auth.uid()));
+
+-- Drivers: insert own records only (status forced to 'pending' by app logic)
+CREATE POLICY "expenses_driver_insert" ON public.vehicle_expenses FOR INSERT
+  WITH CHECK (driver_id = (SELECT driver_id FROM public.profiles WHERE id = auth.uid()));
+
+-- Admins: full access
+CREATE POLICY "expenses_admin_all" ON public.vehicle_expenses FOR ALL
+  USING (public.is_admin())
+  WITH CHECK (public.is_admin());
+
+-- Also extend otp_verifications resource_type check to include 'expense_approval'
+-- Run this only if the CHECK constraint can be altered; otherwise the edge functions handle validation
+ALTER TABLE public.otp_verifications
+  DROP CONSTRAINT IF EXISTS otp_verifications_resource_type_check;
+
+ALTER TABLE public.otp_verifications
+  ADD CONSTRAINT otp_verifications_resource_type_check
+  CHECK (resource_type IN ('recon_edit','booking_edit','booking_delete','expense_approval'));
+
+CREATE TABLE IF NOT EXISTS public.rented_vehicles (
+  id            UUID          PRIMARY KEY DEFAULT gen_random_uuid(),
+  supplier      TEXT          NOT NULL,
+  reg_no        TEXT          NOT NULL,
+  make          TEXT,
+  model         TEXT,
+  start_date    DATE,
+  end_date      DATE,
+  daily_rate    NUMERIC(12,2),
+  supplier_ref  TEXT,
+  status        TEXT          NOT NULL DEFAULT 'active',
+  notes         TEXT,
+  created_at    TIMESTAMPTZ   NOT NULL DEFAULT NOW()
+);
+
+-- ============================================================
+--  RENTED VEHICLE BOOKING INTEGRATION (safe to re-run)
+-- ============================================================
+
+ALTER TABLE public.bookings
+  ADD COLUMN IF NOT EXISTS is_rented_vehicle     BOOLEAN     NOT NULL DEFAULT false,
+  ADD COLUMN IF NOT EXISTS rented_vehicle_id     UUID        REFERENCES public.rented_vehicles(id) ON DELETE SET NULL,
+  ADD COLUMN IF NOT EXISTS rented_vehicle_reg    TEXT,
+  ADD COLUMN IF NOT EXISTS rented_vehicle_model  TEXT;
+
+CREATE INDEX IF NOT EXISTS idx_bookings_rented_vehicle_id
+  ON public.bookings(rented_vehicle_id)
+  WHERE rented_vehicle_id IS NOT NULL;
+
+CREATE INDEX IF NOT EXISTS idx_bookings_is_rented
+  ON public.bookings(is_rented_vehicle)
+  WHERE is_rented_vehicle = true;
+
+ALTER TABLE public.rented_vehicles
+  ADD COLUMN IF NOT EXISTS assigned_booking_id   UUID REFERENCES public.bookings(id) ON DELETE SET NULL,
+  ADD COLUMN IF NOT EXISTS assigned_driver_id    TEXT REFERENCES public.profiles(driver_id) ON DELETE SET NULL;
+
+-- Protect supplier/rate/assignment metadata exposed through the browser API.
+ALTER TABLE public.rented_vehicles ENABLE ROW LEVEL SECURITY;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies
+    WHERE schemaname = 'public'
+      AND tablename = 'rented_vehicles'
+      AND policyname = 'rented_vehicles_driver_select'
+  ) THEN
+    CREATE POLICY "rented_vehicles_driver_select" ON public.rented_vehicles FOR SELECT TO authenticated
+      USING (assigned_driver_id = (SELECT driver_id FROM public.profiles WHERE id = auth.uid()));
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies
+    WHERE schemaname = 'public'
+      AND tablename = 'rented_vehicles'
+      AND policyname = 'rented_vehicles_admin_all'
+  ) THEN
+    CREATE POLICY "rented_vehicles_admin_all" ON public.rented_vehicles FOR ALL TO authenticated
+      USING (public.is_admin())
+      WITH CHECK (public.is_admin());
+  END IF;
+END;
+$$;
+
+ALTER TABLE public.inspections
+  ADD COLUMN IF NOT EXISTS is_rented_vehicle     BOOLEAN NOT NULL DEFAULT false,
+  ADD COLUMN IF NOT EXISTS rented_vehicle_model  TEXT;
+
+-- Rented vehicle inspection registrations may not exist in the owned fleet table.
+ALTER TABLE public.inspections
+  DROP CONSTRAINT IF EXISTS inspections_vehicle_reg_fkey;

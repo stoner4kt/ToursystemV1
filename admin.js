@@ -15,6 +15,27 @@
 
   initSidebar();
 
+  document.getElementById('booking-is-rented')?.addEventListener('change', function() {
+    document.getElementById('rented-vehicle-fields').style.display = this.checked ? 'block' : 'none';
+    if (!this.checked) {
+      document.getElementById('booking-rented-reg').value = '';
+      document.getElementById('booking-rented-model').value = '';
+      document.getElementById('booking-rented-vehicle-id').value = '';
+      document.getElementById('booking-rented-vehicle-select').value = '';
+    }
+  });
+
+  document.getElementById('booking-rented-vehicle-select')?.addEventListener('change', function() {
+    const sel = this.options[this.selectedIndex];
+    if (sel && sel.value) {
+      document.getElementById('booking-rented-reg').value   = sel.dataset.reg   || '';
+      document.getElementById('booking-rented-model').value = sel.dataset.model || '';
+      document.getElementById('booking-rented-vehicle-id').value = sel.value;
+    } else {
+      document.getElementById('booking-rented-vehicle-id').value = '';
+    }
+  });
+
   document.getElementById('btn-signout-sidebar')?.addEventListener('click', signOut);
 
   renderCalendar();
@@ -41,6 +62,7 @@ function switchTab(target) {
   if (target === 'checklists') loadVehicleChecklists();
   if (target === 'transfer-recon') loadTransferReconReview();
   if (target === 'reports')  loadReports();
+  if (target === 'traffic-fines') initTrafficFinesDashboard();
   if (target === 'bookings-archive')  loadBookingsArchive();
 }
 
@@ -80,6 +102,26 @@ async function loadBookingDropdowns() {
       vsel.appendChild(opt);
     });
   }
+
+  await loadRentedVehicleDropdown();
+}
+
+async function loadRentedVehicleDropdown() {
+  const sel = document.getElementById('booking-rented-vehicle-select');
+  if (!sel) return;
+  const { data } = await sb.from('rented_vehicles')
+    .select('id,reg_no,make,model,status')
+    .in('status', ['active'])
+    .order('reg_no');
+  sel.innerHTML = '<option value="">— or enter details below —</option>';
+  (data || []).forEach((v) => {
+    const opt = document.createElement('option');
+    opt.value = v.id;
+    opt.dataset.reg   = v.reg_no;
+    opt.dataset.model = [v.make, v.model].filter(Boolean).join(' ');
+    opt.textContent   = `${v.reg_no} — ${[v.make, v.model].filter(Boolean).join(' ')} (${v.status})`;
+    sel.appendChild(opt);
+  });
 }
 
 async function renderCalendar() {
@@ -133,7 +175,10 @@ function showBookingsForDate(dateStr, cell) {
       <div class="booking-dot" style="background:${b.receipt_number ? 'var(--green)' : b.status==='cancelled' ? 'var(--red)' : 'var(--orange)'}"></div>
       <div class="booking-info">
         <div class="booking-route">${b.client_name} — ${b.tour_reference || b.route || 'Tour Ref TBC'}</div>
-        <div class="booking-meta">${b.invoice_no} · ${b.assigned_driver_id || 'Unassigned'} · ${b.assigned_vehicle_reg || 'No vehicle'}${b.receipt_number ? ' · <span style="color:var(--green);font-weight:700">RCP: ' + b.receipt_number + '</span>' : ' · <span style="color:var(--orange);font-weight:600">Unpaid</span>'}</div>
+        <div class="booking-meta">${b.invoice_no} · ${b.assigned_driver_id || 'Unassigned'} · ${b.is_rented_vehicle ? (b.rented_vehicle_reg || 'Rented vehicle') : (b.assigned_vehicle_reg || 'No vehicle')}${b.receipt_number ? ' · <span style="color:var(--green);font-weight:700">RCP: ' + b.receipt_number + '</span>' : ' · <span style="color:var(--orange);font-weight:600">Unpaid</span>'}</div>
+        ${b.is_rented_vehicle
+          ? `<span class="badge badge-amber" title="${b.rented_vehicle_reg || ''}">🚗 Rented${b.rented_vehicle_reg ? ': ' + b.rented_vehicle_reg : ''}</span>`
+          : ''}
       </div>
       <div style="display:flex;gap:6px;align-items:center;flex-shrink:0">
         ${statusBadge(b.status)}
@@ -167,6 +212,7 @@ function getBookingNotesInput() {
 }
 
 function resetBookingForm() {
+  toggleBookingLockState({ is_locked: false });
   document.getElementById('booking-id').value          = '';
   document.getElementById('booking-invoice').value     = `INV-${Date.now().toString().slice(-6)}`;
   document.getElementById('booking-client').value      = '';
@@ -175,6 +221,12 @@ function resetBookingForm() {
   document.getElementById('booking-end-date').value    = '';
   document.getElementById('booking-driver').value      = '';
   document.getElementById('booking-vehicle').value     = '';
+  document.getElementById('booking-is-rented').checked = false;
+  document.getElementById('rented-vehicle-fields').style.display = 'none';
+  document.getElementById('booking-rented-vehicle-select').value = '';
+  document.getElementById('booking-rented-reg').value = '';
+  document.getElementById('booking-rented-model').value = '';
+  document.getElementById('booking-rented-vehicle-id').value = '';
   document.getElementById('booking-status').value      = 'invoiced';
   document.getElementById('booking-payment-status').value = 'unpaid';
   const receiptEl = document.getElementById('booking-receipt-number');
@@ -189,9 +241,80 @@ function resetBookingForm() {
   renderBookingDocumentsList();
   renderItineraryPreview(null);
 }
+function bookingDocumentHref(doc, asAttachment = true) {
+  if (doc?.url && !doc?.public_id) return doc.url;
+  return '#';
+}
+
+function bookingDocumentAttrs(doc) {
+  if (!doc?.public_id) return '';
+  return `data-public-id="${escapeHtml(doc.public_id)}" data-resource-type="${escapeHtml(doc.resource_type || 'raw')}" data-secure-download="true"`;
+}
+
+async function handleSecureDocumentContainerClick(event) {
+  const link = event.target.closest('a[data-secure-download="true"]');
+  if (!link) return;
+  event.preventDefault();
+  const signedUrl = await getSignedUrl(link.dataset.publicId, link.dataset.resourceType || 'raw', true);
+  if (!signedUrl) return toast('Could not generate secure link', 'error');
+  window.open(signedUrl, '_blank', 'noopener');
+}
+
+function normalizeItineraryMetadata(itinerary) {
+  if (!itinerary) return null;
+
+  let meta = itinerary;
+  if (typeof itinerary === 'string') {
+    try {
+      meta = JSON.parse(itinerary);
+    } catch (_) {
+      meta = { url: itinerary, filename: 'Itinerary' };
+    }
+  }
+
+  if (!meta || typeof meta !== 'object') return null;
+  if (meta.public_id) return { ...meta, filename: meta.filename || 'Itinerary', resource_type: meta.resource_type || 'raw' };
+  if (meta.url) return { ...meta, filename: meta.filename || 'Itinerary' };
+  return null;
+}
+
+function itineraryLinkAttrs(meta) {
+  if (!meta?.public_id) return '';
+  return `data-public-id="${escapeHtml(meta.public_id)}" data-resource-type="${escapeHtml(meta.resource_type || 'raw')}" data-itinerary-secure-download="true"`;
+}
+
+function renderItineraryLink(itinerary, label = '📋 Itinerary', className = '', style = '') {
+  const meta = normalizeItineraryMetadata(itinerary);
+  if (!meta) return '';
+
+  const href = meta.public_id ? '#' : meta.url;
+  const classAttr = className ? ` class="${escapeHtml(className)}"` : '';
+  const styleAttr = style ? ` style="${escapeHtml(style)}"` : '';
+  return `<a href="${escapeHtml(href)}" target="_blank" rel="noopener"${classAttr}${styleAttr} ${itineraryLinkAttrs(meta)}>${escapeHtml(label)}</a>`;
+}
+
+async function handleSecureItineraryLinkClick(event) {
+  const link = event.target.closest('a[data-itinerary-secure-download="true"]');
+  if (!link) return;
+  event.preventDefault();
+  const signedUrl = await getSignedUrl(link.dataset.publicId, link.dataset.resourceType || 'raw', false);
+  if (!signedUrl) return toast('Could not generate secure link', 'error');
+  window.open(signedUrl, '_blank', 'noopener');
+}
+
+function bindSecureItineraryLinks(container) {
+  if (!container || container.dataset.secureItineraryHandlerBound) return;
+  container.addEventListener('click', handleSecureItineraryLinkClick);
+  container.dataset.secureItineraryHandlerBound = 'true';
+}
+
 function renderBookingDocumentsList() {
   const holder = document.getElementById('booking-documents-list');
   if (!holder) return;
+  if (!holder.dataset.secureDocHandlerBound) {
+    holder.addEventListener('click', handleSecureDocumentContainerClick);
+    holder.dataset.secureDocHandlerBound = 'true';
+  }
   if (!currentBookingDocuments.length) {
     holder.innerHTML = `<div style="color:var(--text-muted);font-size:.82rem">No documents attached.</div>`;
     return;
@@ -261,12 +384,19 @@ async function openEditBooking(id) {
   document.getElementById('booking-end-date').value   = data.end_date;
   document.getElementById('booking-driver').value     = data.assigned_driver_id || '';
   document.getElementById('booking-vehicle').value    = data.assigned_vehicle_reg || '';
+  const isRented = !!data.is_rented_vehicle;
+  document.getElementById('booking-is-rented').checked = isRented;
+  document.getElementById('rented-vehicle-fields').style.display = isRented ? 'block' : 'none';
+  document.getElementById('booking-rented-reg').value   = data.rented_vehicle_reg   || '';
+  document.getElementById('booking-rented-model').value = data.rented_vehicle_model || '';
+  document.getElementById('booking-rented-vehicle-id').value = data.rented_vehicle_id || '';
+  document.getElementById('booking-rented-vehicle-select').value = data.rented_vehicle_id || '';
   document.getElementById('booking-status').value     = data.status;
   const notesInput = getBookingNotesInput();
   if (notesInput) notesInput.value = data.notes || '';
   currentBookingDocuments = Array.isArray(data.booking_documents) ? data.booking_documents : [];
   renderBookingDocumentsList();
-  renderItineraryPreview(data.itinerary_url ? { url: data.itinerary_url, filename: data.itinerary_filename } : null);
+  renderItineraryPreview(data.itinerary_url);
   document.getElementById('modal-booking-title').textContent = 'Edit Booking';
   openModal('modal-booking');
 }
@@ -277,6 +407,11 @@ document.getElementById('form-booking')?.addEventListener('submit', async (e) =>
   const vehicle = document.getElementById('booking-vehicle').value;
   const start = document.getElementById('booking-start-date').value;
   const end = document.getElementById('booking-end-date').value;
+  const isRentedBooking = document.getElementById('booking-is-rented').checked;
+  if (isRentedBooking && !document.getElementById('booking-rented-reg').value.trim()) {
+    toast('Please enter the rented vehicle registration number', 'error');
+    return;
+  }
   const availability = await validateVehicleAvailability(vehicle, start, end, id || null);
   if (!availability.ok) {
     toast(availability.message, 'error');
@@ -292,7 +427,11 @@ document.getElementById('form-booking')?.addEventListener('submit', async (e) =>
     start_date:           document.getElementById('booking-start-date').value,
     end_date:             document.getElementById('booking-end-date').value,
     assigned_driver_id:   document.getElementById('booking-driver').value  || null,
-    assigned_vehicle_reg: document.getElementById('booking-vehicle').value || null,
+    assigned_vehicle_reg: isRentedBooking ? null : (document.getElementById('booking-vehicle').value || null),
+    is_rented_vehicle:    isRentedBooking,
+    rented_vehicle_id:    document.getElementById('booking-rented-vehicle-id').value || null,
+    rented_vehicle_reg:   isRentedBooking ? (document.getElementById('booking-rented-reg').value.trim() || null) : null,
+    rented_vehicle_model: isRentedBooking ? (document.getElementById('booking-rented-model').value.trim() || null) : null,
     status:               document.getElementById('booking-status').value,
     notes:                (getBookingNotesInput()?.value || '').trim(),
   };
@@ -307,8 +446,8 @@ document.getElementById('form-booking')?.addEventListener('submit', async (e) =>
     toast('Uploading documents…', 'info');
     try {
       for (const f of files) {
-        const url = await uploadToCloudinary(f, 'booking-documents');
-        currentBookingDocuments.push({ url, filename: f.name, size: f.size, uploaded_at: new Date().toISOString(), uploaded_by: currentProfile?.id || null });
+        const upload = await uploadToCloudinary(f, 'booking-documents');
+        currentBookingDocuments.push({ ...upload, filename: f.name, size: f.size, uploaded_at: new Date().toISOString(), uploaded_by: currentProfile?.id || null });
       }
       toast('Documents saved', 'success');
     } catch (err) {
@@ -323,8 +462,8 @@ document.getElementById('form-booking')?.addEventListener('submit', async (e) =>
     if (currentProfile?.role !== 'admin') return toast('Only admins can upload itineraries', 'error');
     try {
       toast('Uploading itinerary…', 'info');
-      const itinUrl = await uploadToCloudinary(itineraryFile, 'booking-itinerary');
-      payload.itinerary_url         = itinUrl;
+      const itineraryUpload = await uploadToCloudinary(itineraryFile, 'booking-itinerary');
+      payload.itinerary_url         = JSON.stringify({ public_id: itineraryUpload.public_id, resource_type: itineraryUpload.resource_type, filename: itineraryFile.name });
       payload.itinerary_filename    = itineraryFile.name;
       payload.itinerary_uploaded_at = new Date().toISOString();
     } catch (err) {
@@ -369,18 +508,23 @@ async function loadBookingsArchive() {
     const alertBtn = !b.maintenance_alert_sent && b.status !== 'cancelled'
       ? `<button class="btn btn-sm" style="background:var(--orange);color:#fff;margin-top:4px" title="Send vehicle return/maintenance alert email" onclick="sendMaintenanceAlertForBooking('${b.id}')">🔔 Alert</button>`
       : b.maintenance_alert_sent ? `<span style="font-size:.73rem;color:var(--green)">✓ Alerted</span>` : '';
+    const itineraryLink = renderItineraryLink(b.itinerary_url, '📋 Itinerary', '', 'font-size:.73rem');
     return `<tr>
       <td>${b.invoice_no}<br>${receiptHtml}</td>
       <td>${b.client_name}</td>
       <td style="font-size:.8rem">${b.assigned_driver_id || '—'}</td>
-      <td>${b.assigned_vehicle_reg || '—'}</td>
+      <td>${b.is_rented_vehicle
+        ? `<span class="badge badge-amber">🚗 ${b.rented_vehicle_reg || 'Rented'}</span>`
+        : (b.assigned_vehicle_reg || '—')
+      }</td>
       <td>${formatDate(b.start_date)}</td>
       <td>${formatDate(b.end_date)}<br>${alertBtn}</td>
       <td>${statusBadge(b.status)}</td>
-      <td>${docs.length ? `<span class="badge badge-blue">${docs.length} docs</span>` : '—'}${b.itinerary_url ? '<br><a href="'+b.itinerary_url+'" target="_blank" style="font-size:.73rem">📋 Itinerary</a>' : ''}</td>
+      <td>${docs.length ? `<span class="badge badge-blue">${docs.length} docs</span>` : '—'}${itineraryLink ? `<br>${itineraryLink}` : ''}</td>
       <td><button class="btn btn-sm btn-outline" onclick="openEditBooking('${b.id}')">View Details</button>${docs.length ? ` <button class="btn btn-sm btn-amber" onclick="downloadBookingDocuments('${b.id}')">Docs</button>` : ''}</td>
     </tr>`;
   }).join('') || `<tr><td colspan="9">No bookings found.</td></tr>`;
+  bindSecureItineraryLinks(tbody);
 }
 async function downloadBookingDocuments(bookingId) {
   const { data } = await sb.from('bookings').select('booking_documents').eq('id', bookingId).single();
@@ -412,6 +556,12 @@ async function performBookingSave(id, payload, submitBtn) {
     if (error) {
       toast('Error: ' + error.message + (error.message.includes('infinite recursion') ? ' — Check RLS policies.' : ''), 'error');
       return;
+    }
+    if (payload.is_rented_vehicle && payload.rented_vehicle_id && bookingData?.id) {
+      await sb.from('rented_vehicles').update({
+        assigned_booking_id: bookingData.id,
+        assigned_driver_id:  payload.assigned_driver_id || null,
+      }).eq('id', payload.rented_vehicle_id);
     }
     if (id) {
       await sb.from('booking_edit_log').insert({
@@ -544,10 +694,17 @@ async function approveReconEditRequest(reconId) {
 async function rejectReconEditRequest(reconId, reason) {
   const rejReason = reason || prompt('Enter a reason for rejecting this edit request (optional):');
   try {
-    const { error } = await sb.from('recon_sheets').update({
+    let { error } = await sb.from('recon_sheets').update({
       edit_request_status:          'rejected',
       edit_request_rejection_reason: rejReason || null,
     }).eq('id', reconId);
+
+    if (error && error.message?.includes('edit_request_rejection_reason')) {
+      ({ error } = await sb.from('recon_sheets').update({
+        edit_request_status: 'rejected',
+      }).eq('id', reconId));
+    }
+
     if (error) throw error;
     toast('Edit request rejected', 'info');
     loadReconReview?.();
@@ -706,7 +863,7 @@ async function loadActiveTrips() {
       <td>${b.invoice_no}</td>
       <td>${b.client_name}</td>
       <td>${b.assigned_driver_id || '—'}</td>
-      <td>${b.assigned_vehicle_reg || '—'}</td>
+      <td>${b.is_rented_vehicle ? `<span class="badge badge-amber">🚗 ${b.rented_vehicle_reg || 'Rented'}</span>` : (b.assigned_vehicle_reg || '—')}</td>
       <td>${formatDate(b.start_date)} → ${formatDate(b.end_date)}</td>
     </tr>`).join('');
 }
@@ -725,7 +882,7 @@ async function loadUpcomingTrips() {
       <td>${b.invoice_no}</td>
       <td>${b.client_name}</td>
       <td>${b.assigned_driver_id || '—'}</td>
-      <td>${b.assigned_vehicle_reg || '—'}</td>
+      <td>${b.is_rented_vehicle ? `<span class="badge badge-amber">🚗 ${b.rented_vehicle_reg || 'Rented'}</span>` : (b.assigned_vehicle_reg || '—')}</td>
       <td>${formatDate(b.start_date)}</td>
     </tr>`).join('');
 }
@@ -863,6 +1020,9 @@ async function loadReports() {
         <div style="flex:1;min-width:0">
           <div class="inspection-title">${insp.vehicle_reg} — ${insp.inspection_type}</div>
           <div class="inspection-meta">Driver: ${insp.profiles?.name || insp.driver_id} · ${formatDateTime(insp.created_at)} · ${media.length} photo(s)</div>
+          ${insp.is_rented_vehicle
+            ? `<span class="badge badge-amber" style="font-size:.7rem">🚗 Rented Vehicle${insp.rented_vehicle_model ? ': ' + insp.rented_vehicle_model : ''}</span> `
+            : ''}
           ${faults.length > 0
             ? `<div class="inspection-fault-count">⚠ ${faults.length} fault(s)</div>`
             : '<div style="color:var(--green);font-size:.78rem;margin-top:3px">✓ No faults</div>'}
@@ -984,7 +1144,7 @@ async function openReportDetail(id) {
   const checklistEntries = Object.entries(insp.checklist_json || {});
   document.getElementById('report-detail-body').innerHTML = `
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px">
-      <div><strong>Vehicle</strong><p>${insp.vehicle_reg} — ${insp.vehicles?.make||''} ${insp.vehicles?.model||''}</p></div>
+      <div><strong>Vehicle</strong><p>${insp.vehicle_reg} — ${insp.is_rented_vehicle ? (insp.rented_vehicle_model || 'Rented Vehicle') : `${insp.vehicles?.make||''} ${insp.vehicles?.model||''}`}</p>${insp.is_rented_vehicle ? `<span class="badge badge-amber" style="font-size:.7rem">🚗 Rented Vehicle${insp.rented_vehicle_model ? ': ' + insp.rented_vehicle_model : ''}</span>` : ''}</div>
       <div><strong>Driver</strong><p>${insp.profiles?.name || insp.driver_id}</p></div>
       <div><strong>Type</strong><p>${statusBadge(insp.inspection_type)}</p></div>
       <div><strong>Date</strong><p>${formatDateTime(insp.created_at)}</p></div>
@@ -1006,16 +1166,31 @@ async function openReportDetail(id) {
     ${media.length > 0 ? `
       <div><strong>Photos / Videos</strong>
         <div class="media-preview" style="margin-top:8px">
-          ${media.map((url) => url.match(/\.(mp4|webm|mov)$/i)
-            ? `<div class="media-preview-item"><video src="${url}" controls></video></div>`
-            : `<div class="media-preview-item"><a href="${url}" target="_blank"><img src="${url}" alt="media"></a></div>`
-          ).join('')}
+          ${media.map((item, index) => {
+            const legacyUrl = typeof item === 'string' ? item : item?.url;
+            const publicId = typeof item === 'object' ? item?.public_id : null;
+            const resourceType = (typeof item === 'object' ? item?.resource_type : null) || (/\.(mp4|webm|mov)$/i.test(legacyUrl || '') ? 'video' : 'image');
+            if (publicId) {
+              return resourceType === 'video'
+                ? `<div class="media-preview-item"><video src="${SECURE_MEDIA_SPINNER}" controls data-secure-media="true" data-public-id="${escapeHtml(publicId)}" data-resource-type="video"></video></div>`
+                : `<div class="media-preview-item"><a href="#" target="_blank" data-secure-media-link="report-media-${index}"><img id="report-media-${index}" src="${SECURE_MEDIA_SPINNER}" alt="media" data-secure-media="true" data-public-id="${escapeHtml(publicId)}" data-resource-type="image"></a></div>`;
+            }
+            return /\.(mp4|webm|mov)$/i.test(legacyUrl || '')
+              ? `<div class="media-preview-item"><video src="${legacyUrl}" controls></video></div>`
+              : `<div class="media-preview-item"><a href="${legacyUrl}" target="_blank"><img src="${legacyUrl}" alt="media"></a></div>`;
+          }).join('')}
         </div>
       </div>` : ''}
     ${insp.notes ? `<div style="margin-top:12px"><strong>Notes</strong><p style="font-size:.88rem;color:var(--text-muted)">${insp.notes}</p></div>` : ''}
     <div style="margin-top:18px"><button class="btn btn-amber btn-full" onclick="downloadPDF('${insp.id}')">⬇ Download PDF Report</button></div>
   `;
   document.getElementById('report-detail-id').value = id;
+  document.querySelectorAll('#report-detail-body [data-secure-media="true"]').forEach((el) => {
+    renderSecureMedia(el, el.dataset.publicId, el.dataset.resourceType || 'image').then(() => {
+      const link = el.closest('a[data-secure-media-link]');
+      if (link && el.src) link.href = el.src;
+    });
+  });
   openModal('modal-report-detail');
 }
 
@@ -1098,6 +1273,8 @@ async function downloadPDF(inspectionId) {
 
 async function validateVehicleAvailability(vehicleReg,startDate,endDate,excludeBookingId=null){
   if(!vehicleReg||!startDate||!endDate) return {ok:true};
+  const isRented = document.getElementById('booking-is-rented')?.checked;
+  if(isRented) return {ok:true};
   let q=sb.from('bookings').select('id,invoice_no,start_date,end_date,status').eq('assigned_vehicle_reg',vehicleReg).neq('status','cancelled').lte('start_date',endDate).gte('end_date',startDate);
   if(excludeBookingId) q=q.neq('id',excludeBookingId);
   const {data,error}=await q; if(error) return {ok:false,message:error.message};
@@ -1112,7 +1289,13 @@ async function validateBookingCompletion(bookingId){
  if(!data.post_trip_inspection_id) return {ok:false,message:'Post-trip inspection required.'};
  return {ok:true};
 }
-function toggleBookingLockState(data){const locked=!!data?.is_locked;document.querySelectorAll('#form-booking input,#form-booking select,#form-booking textarea, #form-booking button[type="submit"]').forEach(el=>{if(el.id!=='btn-mark-complete')el.disabled=locked});document.getElementById('booking-lock-notice').style.display=locked?'block':'none';document.getElementById('btn-mark-complete').style.display=locked?'none':'inline-block';}
+function toggleBookingLockState(data){
+  const locked=!!data?.is_locked;
+  document.querySelectorAll('#form-booking input,#form-booking select,#form-booking textarea, #form-booking button[type="submit"]').forEach(el=>{if(el.id!=='btn-mark-complete')el.disabled=locked});
+  ['booking-is-rented','booking-rented-reg','booking-rented-model','booking-rented-vehicle-select'].forEach((id)=>{const el=document.getElementById(id); if(el) el.disabled=locked;});
+  document.getElementById('booking-lock-notice').style.display=locked?'block':'none';
+  document.getElementById('btn-mark-complete').style.display=locked?'none':'inline-block';
+}
 async function completeBooking(bookingId){ if(currentProfile?.role!=='admin') return toast('Only admins can complete bookings','error'); const v=await validateBookingCompletion(bookingId); if(!v.ok) return toast(v.message,'warning'); const {error}=await sb.from('bookings').update({status:'completed',is_locked:true,completed_by:currentProfile.id,completed_at:new Date().toISOString()}).eq('id',bookingId); if(error) return toast(error.message,'error'); toast('Booking completed and locked','success'); closeModal('modal-booking'); await renderCalendar(); }
 document.getElementById('btn-mark-complete')?.addEventListener('click',()=>{const id=document.getElementById('booking-id').value;if(id)completeBooking(id);});
 async function loadIncidentReports(){const {data,error}=await sb.from('incident_reports').select('*').order('created_at',{ascending:false}).limit(100);document.getElementById('incident-list').innerHTML=error?error.message:(data||[]).map(i=>`<div class="inspection-item"><div class="inspection-title">${i.incident_type}</div><div class="inspection-meta">${i.driver_id} · ${i.vehicle_reg} · ${i.status}</div></div>`).join('')||'No incidents';}
@@ -1368,3 +1551,198 @@ async function downloadTransferReconPDF(id) {
   toast('Transfer Recon PDF downloaded', 'success');
 }
 window.downloadTransferReconPDF = downloadTransferReconPDF;
+
+// ── TRAFFIC FINES DASHBOARD ──────────────────────────────────
+let currentFineLookupMatch = null;
+let fineDashboardLoaded = false;
+
+function fineEscapeHtml(value) {
+  return String(value ?? '')
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#039;');
+}
+
+function fineDateTimeLocalToIso(value) {
+  if (!value) return null;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date.toISOString();
+}
+
+function formatMoney(amount) {
+  if (amount === null || amount === undefined || amount === '') return '—';
+  const numeric = Number(amount);
+  return Number.isFinite(numeric) ? `R ${numeric.toFixed(2)}` : fineEscapeHtml(amount);
+}
+
+async function initTrafficFinesDashboard() {
+  if (fineDashboardLoaded) {
+    await loadAdminTrafficFines();
+    return;
+  }
+  fineDashboardLoaded = true;
+  await loadFineVehicleOptions();
+  await loadAdminTrafficFines();
+}
+
+async function loadFineVehicleOptions() {
+  const select = document.getElementById('fine-vehicle');
+  if (!select) return;
+  const { data, error } = await sb.from('vehicles').select('id,registration_no,model').order('registration_no');
+  if (error) {
+    select.innerHTML = '<option value="">Unable to load vehicles</option>';
+    toast(error.message, 'error');
+    return;
+  }
+  select.innerHTML = '<option value="">Select vehicle…</option>' + (data || []).map((v) => (
+    `<option value="${fineEscapeHtml(v.registration_no)}">${fineEscapeHtml(v.registration_no)} — ${fineEscapeHtml(v.model || 'Vehicle')}</option>`
+  )).join('');
+}
+
+async function lookupDriverByFineTimeDashboard(event) {
+  event?.preventDefault();
+  const vehicleId = document.getElementById('fine-vehicle')?.value?.trim();
+  const timestampInput = document.getElementById('fine-timestamp')?.value;
+  const fineTimestamp = fineDateTimeLocalToIso(timestampInput);
+  const resultBox = document.getElementById('fine-lookup-result');
+  const logCard = document.getElementById('fine-log-card');
+  currentFineLookupMatch = null;
+  if (logCard) logCard.style.display = 'none';
+
+  if (!vehicleId || !fineTimestamp) {
+    if (resultBox) resultBox.innerHTML = '<div class="empty-state"><div class="empty-icon">⚠️</div><p>Select a vehicle and a valid fine date/time.</p></div>';
+    return;
+  }
+
+  if (resultBox) resultBox.innerHTML = '<div class="spinner"></div>';
+  const { data, error } = await sb.rpc('lookup_driver_by_fine_time', {
+    p_vehicle_id: vehicleId,
+    p_fine_timestamp: fineTimestamp,
+  });
+
+  if (error) {
+    if (resultBox) resultBox.innerHTML = `<p style="color:var(--red)">${fineEscapeHtml(error.message)}</p>`;
+    return;
+  }
+
+  const match = data?.[0];
+  if (!match) {
+    if (resultBox) resultBox.innerHTML = '<div class="empty-state"><div class="empty-icon">🔎</div><p>No assigned, non-cancelled booking matched that exact vehicle and timestamp.</p></div>';
+    return;
+  }
+
+  currentFineLookupMatch = match;
+  document.getElementById('fine-booking-id').value = match.booking_id;
+  document.getElementById('fine-driver-id').value = match.driver_id;
+  document.getElementById('fine-vehicle-reg').value = match.vehicle_reg;
+  document.getElementById('fine-log-timestamp').value = fineTimestamp;
+  document.getElementById('fine-notification-email').required = !match.driver_email;
+
+  if (resultBox) {
+    resultBox.innerHTML = `
+      <div class="card" style="background:#f8fafc;margin:0">
+        <div class="card-title">Matched Booking</div>
+        <div class="detail-grid">
+          <div><strong>Booking</strong><p>${fineEscapeHtml(match.invoice_no || match.booking_id)}</p></div>
+          <div><strong>Client</strong><p>${fineEscapeHtml(match.client_name || '—')}</p></div>
+          <div><strong>Vehicle</strong><p>${fineEscapeHtml(match.vehicle_reg)}</p></div>
+          <div><strong>Driver</strong><p>${fineEscapeHtml(match.driver_name || match.driver_id)} (${fineEscapeHtml(match.driver_id)})</p></div>
+          <div><strong>Phone</strong><p>${fineEscapeHtml(match.driver_phone || '—')}</p></div>
+          <div><strong>Profile Email</strong><p>${fineEscapeHtml(match.driver_email || 'No email on profile — enter alternate email below')}</p></div>
+        </div>
+      </div>`;
+  }
+  if (logCard) logCard.style.display = 'block';
+}
+
+async function submitTrafficFine(event) {
+  event?.preventDefault();
+  if (!currentFineLookupMatch) {
+    toast('Run a lookup before logging a fine.', 'warning');
+    return;
+  }
+
+  const submitBtn = event?.target?.querySelector('button[type="submit"]');
+  if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = 'Saving…'; }
+
+  const alternateEmail = document.getElementById('fine-notification-email').value.trim();
+  if (!currentFineLookupMatch.driver_email && !alternateEmail) {
+    toast('Enter an alternate email because this driver profile has no email.', 'warning');
+    if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = 'Save Fine & Send Email'; }
+    return;
+  }
+
+  const amountValue = document.getElementById('fine-amount').value;
+  const payload = {
+    booking_id: document.getElementById('fine-booking-id').value,
+    driver_id: document.getElementById('fine-driver-id').value,
+    vehicle_reg: document.getElementById('fine-vehicle-reg').value,
+    fine_timestamp: document.getElementById('fine-log-timestamp').value,
+    fine_reference: document.getElementById('fine-reference').value.trim() || null,
+    location: document.getElementById('fine-location').value.trim() || null,
+    description: document.getElementById('fine-description').value.trim() || null,
+    amount: amountValue ? Number(amountValue) : null,
+    notification_email: alternateEmail || null,
+  };
+
+  const { data: inserted, error: insertError } = await sb.from('traffic_fines').insert(payload).select('id').single();
+  if (insertError || !inserted) {
+    toast(insertError?.message || 'Fine could not be saved.', 'error');
+    if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = 'Save Fine & Send Email'; }
+    return;
+  }
+
+  try {
+    const { data: { session } } = await sb.auth.getSession();
+    const res = await fetch(CONFIG.NOTIFY_DRIVER_FINE_FUNCTION_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
+      body: JSON.stringify({ traffic_fine_id: inserted.id }),
+    });
+    const result = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(result.error || 'Notification failed');
+    toast(result.warning || 'Fine logged and driver notified.', result.warning ? 'warning' : 'success');
+  } catch (err) {
+    toast(`Fine saved, but email failed: ${err.message}`, 'warning', 6000);
+  }
+
+  event.target.reset();
+  currentFineLookupMatch = null;
+  document.getElementById('fine-log-card').style.display = 'none';
+  document.getElementById('fine-lookup-result').innerHTML = '';
+  if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = 'Save Fine & Send Email'; }
+  await loadAdminTrafficFines();
+}
+
+async function loadAdminTrafficFines() {
+  const tbody = document.getElementById('traffic-fines-tbody');
+  if (!tbody) return;
+  tbody.innerHTML = '<tr><td colspan="7"><div class="spinner"></div></td></tr>';
+  const { data, error } = await sb
+    .from('traffic_fines')
+    .select('*, bookings!traffic_fines_booking_id_fkey(invoice_no,client_name), profiles!traffic_fines_driver_id_fkey(name,phone,email)')
+    .order('fine_timestamp', { ascending: false })
+    .limit(100);
+
+  if (error) {
+    tbody.innerHTML = `<tr><td colspan="7" style="color:var(--red)">${fineEscapeHtml(error.message)}</td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = (data || []).map((fine) => `
+    <tr>
+      <td>${formatDateTime(fine.fine_timestamp)}</td>
+      <td>${fineEscapeHtml(fine.vehicle_reg)}</td>
+      <td>${fineEscapeHtml(fine.profiles?.name || fine.driver_id)}<br><span style="font-size:.73rem;color:var(--text-muted)">${fineEscapeHtml(fine.driver_id)}</span></td>
+      <td>${fineEscapeHtml(fine.bookings?.invoice_no || fine.booking_id)}<br><span style="font-size:.73rem;color:var(--text-muted)">${fineEscapeHtml(fine.bookings?.client_name || '')}</span></td>
+      <td>${fineEscapeHtml(fine.fine_reference || '—')}</td>
+      <td>${formatMoney(fine.amount)}</td>
+      <td>${fine.email_sent ? '<span class="badge badge-green">Sent</span>' : '<span class="badge badge-amber">Pending</span>'}${fine.notification_error ? `<br><span style="font-size:.72rem;color:var(--red)">${fineEscapeHtml(fine.notification_error)}</span>` : ''}</td>
+    </tr>`).join('') || '<tr><td colspan="7">No traffic fines logged yet.</td></tr>';
+}
+
+window.loadAdminTrafficFines = loadAdminTrafficFines;
+document.getElementById('fine-lookup-form')?.addEventListener('submit', lookupDriverByFineTimeDashboard);
+document.getElementById('fine-log-form')?.addEventListener('submit', submitTrafficFine);
