@@ -132,14 +132,53 @@ async function renderCalendar() {
 
   const from = new Date(year, month, 1).toISOString().split('T')[0];
   const to   = new Date(year, month + 1, 0).toISOString().split('T')[0];
-  const { data } = await sb.from('bookings').select('*').lte('start_date', to).gte('end_date', from).order('start_date');
-  allBookings = data || [];
 
+  // Fetch bookings and vehicle colours in parallel (single round-trip)
+  const [{ data: bookingData }, vehicleResult] = await Promise.all([
+    sb.from('bookings').select('*').lte('start_date', to).gte('end_date', from).order('start_date'),
+    sb.from('vehicles').select('registration_no, calendar_color').order('registration_no'),
+  ]);
+  allBookings = bookingData || [];
+
+  // ── Vehicle colour map ──────────────────────────────────────
+  const CAL_PALETTE = ['#2563eb','#16a34a','#dc2626','#f59e0b','#7c3aed','#0891b2','#ea580c','#be185d'];
+  const vehicleColorMap = {};
+  (vehicleResult.data || []).forEach((v) => {
+    if (v.calendar_color) vehicleColorMap[v.registration_no] = v.calendar_color;
+  });
+  function getVehicleColor(reg) {
+    if (!reg) return '#94a3b8';
+    if (!vehicleColorMap[reg]) {
+      vehicleColorMap[reg] = CAL_PALETTE[Object.keys(vehicleColorMap).length % CAL_PALETTE.length];
+    }
+    return vehicleColorMap[reg];
+  }
+
+  // ── Build calendar map: dateStr → [bookings] ───────────────
+  // Parse "YYYY-MM-DD" as a local-time date to avoid UTC-offset drift
+  function parseDateLocal(str) {
+    const [y, m, d] = str.split('-').map(Number);
+    return new Date(y, m - 1, d);
+  }
+  const monthStart = new Date(year, month, 1);
+  const monthEnd   = new Date(year, month + 1, 0);
+  const calendarMap = {};
+  allBookings.forEach((b) => {
+    // Clamp each booking to the visible month so iteration is bounded
+    const start = new Date(Math.max(parseDateLocal(b.start_date).getTime(), monthStart.getTime()));
+    const end   = new Date(Math.min(parseDateLocal(b.end_date).getTime(),   monthEnd.getTime()));
+    for (let dt = new Date(start); dt <= end; dt.setDate(dt.getDate() + 1)) {
+      const key = `${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,'0')}-${String(dt.getDate()).padStart(2,'0')}`;
+      if (!calendarMap[key]) calendarMap[key] = [];
+      calendarMap[key].push(b);
+    }
+  });
+
+  // ── Render grid ────────────────────────────────────────────
   const grid     = document.getElementById('cal-grid');
   const firstDay = new Date(year, month, 1).getDay();
   const lastDay  = new Date(year, month + 1, 0).getDate();
   const today    = new Date();
-  const bookingDates = new Set(allBookings.map((b) => b.start_date));
   grid.innerHTML = '';
 
   ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].forEach((d) => {
@@ -152,9 +191,39 @@ async function renderCalendar() {
   }
   for (let d = 1; d <= lastDay; d++) {
     const dateStr = `${year}-${String(month+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
-    const el = document.createElement('div'); el.className = 'cal-day'; el.textContent = d;
+    const el = document.createElement('div'); el.className = 'cal-day';
     if (d === today.getDate() && month === today.getMonth() && year === today.getFullYear()) el.classList.add('today');
-    if (bookingDates.has(dateStr)) el.classList.add('has-booking');
+
+    // Day number (wrapped so markers can sit below it)
+    const dayNum = document.createElement('div');
+    dayNum.className = 'day-number';
+    dayNum.textContent = d;
+    el.appendChild(dayNum);
+
+    // Vehicle-coloured booking markers
+    const dayBookings = calendarMap[dateStr] || [];
+    if (dayBookings.length > 0) {
+      el.classList.add('has-booking');
+      const markers = document.createElement('div');
+      markers.className = 'booking-markers';
+      const MAX_DOTS = 5;
+      dayBookings.slice(0, MAX_DOTS).forEach((b) => {
+        const dot = document.createElement('span');
+        dot.className = 'booking-marker';
+        const reg = b.is_rented_vehicle ? (b.rented_vehicle_reg || null) : b.assigned_vehicle_reg;
+        dot.style.background = getVehicleColor(reg);
+        dot.title = `${b.client_name} (${reg || 'No vehicle'})`;
+        markers.appendChild(dot);
+      });
+      if (dayBookings.length > MAX_DOTS) {
+        const more = document.createElement('span');
+        more.className = 'booking-marker-more';
+        more.textContent = `+${dayBookings.length - MAX_DOTS}`;
+        markers.appendChild(more);
+      }
+      el.appendChild(markers);
+    }
+
     el.addEventListener('click', () => showBookingsForDate(dateStr, el));
     grid.appendChild(el);
   }
@@ -164,7 +233,7 @@ async function renderCalendar() {
 function showBookingsForDate(dateStr, cell) {
   document.querySelectorAll('.cal-day.selected').forEach((el) => el.classList.remove('selected'));
   cell.classList.add('selected');
-  const dayBookings = allBookings.filter((b) => b.start_date === dateStr);
+  const dayBookings = allBookings.filter((b) => dateStr >= b.start_date && dateStr <= b.end_date);
   const container   = document.getElementById('day-bookings');
   if (!dayBookings.length) {
     container.innerHTML = `<p style="color:var(--text-muted);font-size:.85rem;padding:8px 0">No bookings on ${formatDate(dateStr)}.</p>`;
