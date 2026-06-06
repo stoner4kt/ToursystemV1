@@ -1265,7 +1265,68 @@ async function downloadPDF(inspectionId) {
     doc.setFont('helvetica','normal'); doc.setFontSize(9);
     const wrapped = doc.splitTextToSize(insp.notes, W-28);
     doc.text(wrapped, 14, y);
+    y += wrapped.length * 5 + 6;
   }
+
+  // ── SIGNATURES ────────────────────────────────────────────────────────────
+  const pageH = doc.internal.pageSize.getHeight();
+  if (y > pageH - 52) { doc.addPage(); y = 20; }
+
+  doc.setTextColor(30, 41, 59);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(10);
+  doc.text('Signatures', 14, y);
+  y += 8;
+
+  const sigTimestamp = new Date().toLocaleString('en-ZA', { timeZone: 'Africa/Johannesburg' });
+  const SIG_W  = 80;
+  const SIG_H  = 28;
+  const GAP    = 14;
+  const LEFT_X  = 14;
+  const RIGHT_X = LEFT_X + SIG_W + GAP;
+
+  function embedSig(base64, x, label) {
+    const sigTop = y;
+    try {
+      if (!base64 || typeof base64 !== 'string' || base64.length < 100) {
+        throw new Error('empty');
+      }
+      const dataUrl = base64.startsWith('data:')
+        ? base64
+        : `data:image/png;base64,${base64}`;
+      const rawB64 = dataUrl.split(',')[1] || '';
+      if (!/^[A-Za-z0-9+/=]+$/.test(rawB64.slice(0, 40))) {
+        throw new Error('invalid base64');
+      }
+      doc.addImage(dataUrl, 'PNG', x, sigTop, SIG_W, SIG_H);
+    } catch (err) {
+      console.warn(`Signature embed skipped (${label}):`, err.message);
+      doc.setDrawColor(180, 180, 180);
+      doc.setFillColor(248, 250, 252);
+      doc.roundedRect(x, sigTop, SIG_W, SIG_H, 2, 2, 'FD');
+      doc.setTextColor(150, 150, 150);
+      doc.setFont('helvetica', 'italic');
+      doc.setFontSize(8);
+      doc.text('Signature on file', x + SIG_W / 2, sigTop + SIG_H / 2 - 2, { align: 'center' });
+      doc.text(sigTimestamp,         x + SIG_W / 2, sigTop + SIG_H / 2 + 4, { align: 'center' });
+    }
+    doc.setDrawColor(30, 41, 59);
+    doc.setLineWidth(0.4);
+    doc.line(x, sigTop + SIG_H + 2, x + SIG_W, sigTop + SIG_H + 2);
+    doc.setTextColor(30, 41, 59);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(8.5);
+    doc.text(label, x, sigTop + SIG_H + 7);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(7.5);
+    doc.setTextColor(100, 116, 139);
+    doc.text(`Signed: ${sigTimestamp}`, x, sigTop + SIG_H + 12);
+  }
+
+  embedSig(insp.driver_signature, LEFT_X,  'Driver Signature');
+  embedSig(insp.client_signature, RIGHT_X, 'Client / Manager Signature');
+  // ── END SIGNATURES ────────────────────────────────────────────────────────
+
   doc.save(`INYATHI_Inspection_${insp.vehicle_reg}_${insp.created_at?.split('T')[0]}.pdf`);
   toast('PDF downloaded', 'success');
 }
