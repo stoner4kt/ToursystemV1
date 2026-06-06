@@ -359,30 +359,16 @@ async function loadBookingOptions() {
   });
 }
 
-async function uploadPdfToCloudinary(pdfFile){
-  if(!pdfFile || pdfFile.type!=='application/pdf') throw new Error('Only PDF files are allowed');
-  if(pdfFile.size > 50*1024*1024) throw new Error('PDF exceeds 50MB limit');
-  const upload = await uploadToCloudinary(pdfFile, 'transroute/inspections');
-  return { public_id: upload.public_id, resource_type: upload.resource_type || 'raw' };
-}
-document.getElementById('inspection-pdf-input')?.addEventListener('change', async (e)=>{
- const files=[...(e.target.files||[])];
- for(const f of files){
-  try{
-    const pdf = await uploadPdfToCloudinary(f);
-    window.inspectionPdfUrls.push(pdf);
-    const a=document.createElement('a');
-    a.href='#';
-    a.target='_blank';
-    a.textContent=`📄 ${f.name}`;
-    a.addEventListener('click', async (event)=>{
-      event.preventDefault();
-      const signedUrl = await getSignedUrl(pdf.public_id, pdf.resource_type || 'raw', true);
-      if (signedUrl) window.open(signedUrl, '_blank', 'noopener');
-      else toast('Could not generate PDF link','error');
-    });
-    document.getElementById('pdf-preview').appendChild(a);
-    document.getElementById('pdf-preview').appendChild(document.createElement('br'));
-  }catch(err){toast(err.message,'error');}
- }
+document.getElementById('inspection-pdf-input')?.addEventListener('change', async (e) => {
+  const files = [...(e.target.files || [])];
+  for (const f of files) {
+    try {
+      const url = await uploadToCloudinary(f, 'inspections');
+      window.inspectionPdfUrls.push(url);
+      const a = document.createElement('a');
+      a.href = url; a.target = '_blank'; a.textContent = `📄 ${f.name}`;
+      document.getElementById('pdf-preview').appendChild(a);
+      document.getElementById('pdf-preview').appendChild(document.createElement('br'));
+    } catch (err) { toast(err.message, 'error'); }
+  }
 });
