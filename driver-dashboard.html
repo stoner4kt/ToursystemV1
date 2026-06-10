@@ -229,7 +229,118 @@
 
 
   <div class="tab-panel" id="tab-checklists"><div class="card"><div class="card-title">Vehicle Checklists</div><form id="checklist-form"><input type="date" id="checklist-date" class="form-control" readonly><select id="checklist-vehicle" class="form-control"></select><div id="checklist-items"></div><textarea id="checklist-notes" class="form-control" placeholder="Notes..."></textarea><input type="file" accept=".pdf" id="checklist-pdf-input" class="form-control"><button class="btn btn-amber btn-full" type="submit">Submit Checklist</button></form><div id="checklist-history"></div></div></div>
-  <div class="tab-panel" id="tab-incidents"><div class="card"><div class="card-title">Incident Reports</div><form id="incident-form"><select id="incident-booking" class="form-control"></select><input type="text" id="incident-type" class="form-control" placeholder="Type"><textarea id="incident-description" class="form-control" placeholder="Description"></textarea><input type="text" id="incident-location" class="form-control" placeholder="Location"><label><input type="checkbox" id="incident-injuries"> Injuries Involved</label><input type="file" accept="image/*" multiple id="incident-photos" class="form-control"><input type="file" accept=".pdf" id="incident-pdf" class="form-control"><button class="btn btn-amber btn-full" type="submit">Submit Incident</button></form><div id="incident-history"></div></div></div>
+  <div class="tab-panel" id="tab-incidents">
+  <div class="card">
+    <div class="card-header">
+      <div>
+        <div class="card-title">Report an Incident</div>
+        <div class="card-subtitle">
+          Submit accident, damage, or safety reports for admin review
+        </div>
+      </div>
+    </div>
+
+    <form id="incident-form" novalidate>
+      <div class="form-row">
+        <div class="form-group">
+          <label for="incident-booking">Link to Booking</label>
+          <select id="incident-booking" class="form-control">
+            <option value="">— Select booking —</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label for="incident-vehicle-reg">
+            Vehicle Reg <span class="required">*</span>
+          </label>
+          <input type="text" id="incident-vehicle-reg" class="form-control"
+            placeholder="e.g. CA 123 456" required
+            style="text-transform:uppercase">
+          <small style="color:var(--text-muted);font-size:.75rem">
+            Auto-fills from selected booking or enter manually
+          </small>
+        </div>
+      </div>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label for="incident-type">Incident Type <span class="required">*</span></label>
+          <select id="incident-type" class="form-control" required>
+            <option value="">— Select type —</option>
+            <option value="accident">Accident</option>
+            <option value="damage">Vehicle Damage</option>
+            <option value="theft">Theft / Break-in</option>
+            <option value="breakdown">Breakdown</option>
+            <option value="traffic_violation">Traffic Violation</option>
+            <option value="passenger_incident">Passenger Incident</option>
+            <option value="other">Other</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label for="incident-location">Location</label>
+          <input type="text" id="incident-location" class="form-control"
+            placeholder="e.g. N2 near Strand, Cape Town">
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label for="incident-description">
+          Description <span class="required">*</span>
+        </label>
+        <textarea id="incident-description" class="form-control" rows="4"
+          placeholder="Describe what happened, sequence of events, conditions…"
+          required></textarea>
+      </div>
+
+      <div class="form-group">
+        <label style="display:flex;align-items:center;gap:10px;cursor:pointer">
+          <input type="checkbox" id="incident-injuries"
+            style="width:18px;height:18px;accent-color:var(--amber)">
+          <span style="font-size:.88rem;font-weight:600;color:var(--navy)">
+            Injuries involved (passengers or third parties)
+          </span>
+        </label>
+      </div>
+
+      <div class="form-group">
+        <label>
+          Photos
+          <span style="font-weight:400;color:var(--text-muted)">
+            (damage, scene — up to 10 images)
+          </span>
+        </label>
+        <label class="media-capture-btn" style="aspect-ratio:unset;padding:14px">
+          <span class="icon">📷</span>
+          <span>Tap to add incident photos</span>
+          <input type="file" id="incident-photos" accept="image/*"
+            capture="environment" multiple>
+        </label>
+        <div class="expense-preview-grid" id="incident-photo-preview"
+             style="margin-top:10px"></div>
+      </div>
+
+      <div class="form-group">
+        <label>
+          Supporting Documents
+          <span style="font-weight:400;color:var(--text-muted)">(PDF, Word)</span>
+        </label>
+        <input type="file" id="incident-pdf" class="form-control"
+          accept=".pdf,.doc,.docx,application/pdf,application/msword,
+            application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+          multiple>
+      </div>
+
+      <button type="submit" class="btn btn-amber btn-full"
+              style="padding:13px;font-size:1rem">
+        Submit Incident Report
+      </button>
+    </form>
+  </div>
+
+  <div class="card" style="margin-top:14px">
+    <div class="card-title">My Incident Reports</div>
+    <div id="incident-history"><div class="spinner"></div></div>
+  </div>
+</div>
   <div class="tab-panel" id="tab-fines">
     <div class="card">
       <div class="card-header">
