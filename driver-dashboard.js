@@ -212,6 +212,24 @@ document.getElementById('form-recon')?.addEventListener('submit', async (e) => {
     const range   = getWeekRange();
     const startKm = Number(document.getElementById('recon-start-km').value || 0);
     const endKm   = Number(document.getElementById('recon-end-km').value   || 0);
+    const slipFiles = Array.from(
+      document.getElementById('recon-slip-photos')?.files || []
+    );
+    const slipImageUrls = [];
+    if (slipFiles.length > 0) {
+      toast('Uploading slip photos…', 'info');
+      for (const f of slipFiles) {
+        const upload = await uploadToCloudinary(f, 'recon-slips');
+        slipImageUrls.push({
+          url:           upload.url,
+          public_id:     upload.public_id,
+          resource_type: upload.resource_type,
+          filename:      f.name,
+          size:          f.size,
+          uploaded_at:   new Date().toISOString(),
+        });
+      }
+    }
     const payload = {
       driver_id:        currentProfile.driver_id,
       week_start:       range.start,
@@ -223,6 +241,7 @@ document.getElementById('form-recon')?.addEventListener('submit', async (e) => {
       end_km:           endKm   || null,
       total_distance_km: endKm > startKm ? (endKm - startKm) : 0,
       cost_lines_text:  document.getElementById('recon-lines').value.trim()          || null,
+      slip_image_urls:  slipImageUrls,
       trip_budget:      document.getElementById('recon-trip-budget').value.trim()    || null,
       trip_cost:        document.getElementById('recon-trip-cost').value.trim()      || null,
       driver_food:      document.getElementById('recon-driver-food').value.trim()    || null,
@@ -240,6 +259,7 @@ document.getElementById('form-recon')?.addEventListener('submit', async (e) => {
     await postToWorkerWebhook(CONFIG.WORKER_RECON_WEBHOOK_URL, data || payload);
     toast('Recon sheet submitted successfully!', 'success');
     e.target.reset();
+    document.getElementById('recon-slip-preview').innerHTML = '';
     document.getElementById('recon-driver-name').value = currentProfile?.name || '';
     switchDriverTab('tasks');
   } catch (err) {
@@ -249,6 +269,17 @@ document.getElementById('form-recon')?.addEventListener('submit', async (e) => {
   }
 });
 
+document.getElementById('recon-slip-photos')
+  ?.addEventListener('change', (e) => {
+    const preview = document.getElementById('recon-slip-preview');
+    Array.from(e.target.files).forEach((file) => {
+      const img = document.createElement('img');
+      img.src = URL.createObjectURL(file);
+      img.style.cssText =
+        'width:100%;height:82px;object-fit:cover;border-radius:10px;border:1px solid var(--border)';
+      preview.appendChild(img);
+    });
+  });
 
 async function loadDriverChecklists(){document.getElementById('checklist-date').value=new Date().toISOString().split('T')[0]; document.getElementById('checklist-items').innerHTML=['exterior','interior','mechanical','fluids','tires','brakes','lights','safety_gear'].map(k=>`<label>${k}<select id="chk-${k}" class="form-control"><option>OK</option><option>Needs Attention</option><option>N/A</option></select></label>`).join(''); const {data:v}=await sb.from('bookings').select('assigned_vehicle_reg').eq('assigned_driver_id',currentProfile.driver_id); const regs=[...new Set((v||[]).map(x=>x.assigned_vehicle_reg).filter(Boolean))]; document.getElementById('checklist-vehicle').innerHTML=regs.map(r=>`<option>${r}</option>`).join(''); const {data}=await sb.from('vehicle_checklists').select('*').eq('driver_id',currentProfile.driver_id).order('checklist_date',{ascending:false}); document.getElementById('checklist-history').innerHTML=(data||[]).map(c=>`<div>${c.checklist_date} · ${c.vehicle_reg} · ${c.status}</div>`).join('');}
 document.getElementById('checklist-form')?.addEventListener('submit', async (e)=>{e.preventDefault(); const pdf=document.getElementById('checklist-pdf-input').files[0]; const pdf_url=pdf ? await uploadToCloudinary(pdf,'driver-documents') : null; const payload={vehicle_reg:document.getElementById('checklist-vehicle').value,driver_id:currentProfile.driver_id,checklist_date:document.getElementById('checklist-date').value,exterior:document.getElementById('chk-exterior').value,interior:document.getElementById('chk-interior').value,mechanical:document.getElementById('chk-mechanical').value,fluids:document.getElementById('chk-fluids').value,tires:document.getElementById('chk-tires').value,brakes:document.getElementById('chk-brakes').value,lights:document.getElementById('chk-lights').value,safety_gear:document.getElementById('chk-safety_gear').value,notes:document.getElementById('checklist-notes').value||null,pdf_url,status:'completed'}; const {error}=await sb.from('vehicle_checklists').insert(payload); if(error) return toast(error.message,'error'); toast('Checklist submitted','success'); await loadDriverChecklists();});
@@ -559,7 +590,7 @@ async function loadDriverFines() {
   container.innerHTML = '<div class="spinner"></div>';
   const { data, error } = await sb
     .from('traffic_fines')
-    .select('*, bookings!traffic_fines_booking_id_fkey(invoice_no,client_name,route,start_date,end_date)')
+    .select('*, bookings!traffic_fines_booking_id_fkey(invoice_no,client_name,tour_reference,start_date,end_date)')
     .eq('driver_id', currentProfile.driver_id)
     .order('fine_timestamp', { ascending: false });
 

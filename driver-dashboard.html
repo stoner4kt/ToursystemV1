@@ -185,6 +185,21 @@
           <label>Slip Lines <span style="font-weight:400;color:var(--text-muted)">(Date / ODO / KM / Litres / Cost / Notes)</span></label>
           <textarea id="recon-lines" class="form-control" rows="5" placeholder="2026-05-12 | 125000 | 320 | 45 | 900.00 | Fuel"></textarea>
         </div>
+        <div class="form-group">
+          <label>Slip Line Photos
+            <span style="font-weight:400;color:var(--text-muted)">
+              (receipts, fuel slips – up to 10 images)
+            </span>
+          </label>
+          <label class="media-capture-btn" style="aspect-ratio:unset;padding:14px">
+            <span class="icon">📷</span>
+            <span>Tap to add slip photos</span>
+            <input type="file" id="recon-slip-photos" accept="image/*"
+                   capture="environment" multiple>
+          </label>
+          <div class="expense-preview-grid" id="recon-slip-preview"
+               style="margin-top:10px"></div>
+        </div>
         <div class="form-row">
           <div class="form-group"><label>Trip Budget</label><input id="recon-trip-budget" class="form-control"></div>
           <div class="form-group"><label>Trip Cost</label><input id="recon-trip-cost" class="form-control"></div>
