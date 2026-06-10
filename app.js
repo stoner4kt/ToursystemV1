@@ -8,6 +8,15 @@ const sb = createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON_KEY);
 let currentUser    = null;
 let currentProfile = null;
 
+function escapeHtml(value) {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
 async function initAuth(requiredRole = null) {
   const { data: { session } } = await sb.auth.getSession();
   if (!session) {
@@ -259,7 +268,11 @@ async function uploadToCloudinary(file, folder = 'inspections') {
         throw new Error('Cloudinary upload rejected the file.');
       }
 
-      return json.secure_url;
+      return {
+        url:           json.secure_url,
+        public_id:     json.public_id,
+        resource_type: resourceType,
+      };
     } catch (err) {
       lastError = err;
       if (attempt < 3) await new Promise((r) => setTimeout(r, attempt * 1200));

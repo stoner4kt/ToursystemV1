@@ -11,6 +11,7 @@ const ALLOWED_FOLDERS = new Set([
   "inyathi/inspections",
   "inyathi/driver-documents",
   "inyathi/vehicle-documents",
+  "inyathi/recon-slips",
 ]);
 
 const CORS = {

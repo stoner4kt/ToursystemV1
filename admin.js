@@ -1161,6 +1161,22 @@ async function openReconDetail(id) {
     <p><strong>Accommodation:</strong> ${sheet.accommodation || '—'}</p>
     <p><strong>Total Profit/Loss:</strong> ${sheet.total_profit_loss || '—'}</p>
     ${sheet.cost_lines_text ? `<div style="margin-top:12px"><strong>Slip Lines:</strong><pre style="font-size:.8rem;background:var(--bg);padding:10px;border-radius:8px;overflow-x:auto;white-space:pre-wrap">${sheet.cost_lines_text}</pre></div>` : ''}
+    ${Array.isArray(sheet.slip_image_urls) && sheet.slip_image_urls.length
+      ? `<div style="margin-top:16px">
+          <strong>Slip Photos (${sheet.slip_image_urls.length})</strong>
+          <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(90px,1fr));
+                     gap:8px;margin-top:10px">
+            ${sheet.slip_image_urls.map((img) => {
+              const src = img?.url || img;
+              return `<a href="${escapeHtml(src)}" target="_blank" rel="noopener">
+                <img src="${escapeHtml(src)}" loading="lazy"
+                     style="width:100%;height:80px;object-fit:cover;
+                            border-radius:8px;border:1px solid var(--border)">
+              </a>`;
+            }).join('')}
+          </div>
+        </div>`
+      : ''}
     <div style="margin-top:16px"><button class="btn btn-amber btn-full" onclick="downloadReconPDF('${sheet.id}')">⬇ Download PDF</button></div>
   `;
   openModal('modal-recon-detail');
@@ -1463,7 +1479,166 @@ async function loadWagesTransferRecon() {
     </div>`).join('');
 }
 
-async function loadVehicleChecklists(){const {data,error}=await sb.from('vehicle_checklists').select('*').order('checklist_date',{ascending:false}).limit(100);document.getElementById('checklist-list').innerHTML=error?error.message:(data||[]).map(c=>`<div class="inspection-item"><div class="inspection-title">${c.vehicle_reg} · ${c.checklist_date}</div><div class="inspection-meta">${c.driver_id} · ${c.status}</div></div>`).join('')||'No checklists';}
+async function loadVehicleChecklists() {
+  const { data, error } = await sb
+    .from('vehicle_checklists')
+    .select('*, profiles!vehicle_checklists_driver_id_fkey(name)')
+    .order('checklist_date', { ascending: false })
+    .limit(200);
+  const list = document.getElementById('checklist-list');
+  if (error) { list.innerHTML = `<p style="color:var(--red)">${error.message}</p>`; return; }
+  if (!data?.length) {
+    list.innerHTML = '<div class="empty-state"><div class="empty-icon">🛠</div><p>No vehicle checklists submitted yet.</p></div>';
+    return;
+  }
+  list.innerHTML = data.map((c) => {
+    const statusColor = c.status === 'completed' ? 'var(--green)' : 'var(--amber)';
+    return `
+      <div class="inspection-item">
+        <div style="flex:1;min-width:0">
+          <div class="inspection-title">
+            ${escapeHtml(c.vehicle_reg)} · ${escapeHtml(c.checklist_date)}
+          </div>
+          <div class="inspection-meta">
+            ${escapeHtml(c.profiles?.name || c.driver_id)} ·
+            <span style="color:${statusColor};font-weight:700">${escapeHtml(c.status)}</span>
+          </div>
+        </div>
+        <div style="display:flex;gap:6px;flex-shrink:0">
+          <button class="btn btn-sm btn-outline"
+            onclick="openChecklistDetail('${c.id}')">View</button>
+          <button class="btn btn-sm btn-amber"
+            onclick="downloadChecklistPDF('${c.id}')">PDF</button>
+        </div>
+      </div>`;
+  }).join('');
+}
+
+async function openChecklistDetail(id) {
+  const { data: c, error } = await sb
+    .from('vehicle_checklists')
+    .select('*, profiles!vehicle_checklists_driver_id_fkey(name, driver_id)')
+    .eq('id', id)
+    .single();
+  if (error || !c) { toast(error?.message || 'Not found', 'error'); return; }
+
+  const ITEMS = ['exterior','interior','mechanical','fluids',
+                 'tires','brakes','lights','safety_gear'];
+  const itemRows = ITEMS.map((key) => {
+    const val = c[key] || '—';
+    const color = val === 'OK' ? 'var(--green)'
+                : val === 'Needs Attention' ? 'var(--red)' : 'var(--text-muted)';
+    return `<tr>
+      <td style="padding:8px;text-transform:capitalize;font-weight:600">
+        ${key.replace('_', ' ')}
+      </td>
+      <td style="padding:8px;color:${color};font-weight:700">${escapeHtml(val)}</td>
+    </tr>`;
+  }).join('');
+
+  const pdfLink = c.pdf_url
+    ? `<a href="${escapeHtml(c.pdf_url)}" target="_blank" rel="noopener"
+           class="btn btn-sm btn-outline">📄 Attached PDF</a>`
+    : '';
+
+  const body = `
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px">
+      <div><strong>Vehicle</strong><p>${escapeHtml(c.vehicle_reg)}</p></div>
+      <div><strong>Date</strong><p>${formatDate(c.checklist_date)}</p></div>
+      <div><strong>Driver</strong>
+        <p>${escapeHtml(c.profiles?.name || c.driver_id)}</p></div>
+      <div><strong>Status</strong>
+        <p>${statusBadge(c.status)}</p></div>
+    </div>
+    <table style="width:100%;border-collapse:collapse;font-size:.88rem;
+                  border:1px solid var(--border);border-radius:8px;overflow:hidden">
+      <thead>
+        <tr style="background:var(--navy);color:#fff">
+          <th style="padding:8px;text-align:left">Item</th>
+          <th style="padding:8px;text-align:left">Result</th>
+        </tr>
+      </thead>
+      <tbody>${itemRows}</tbody>
+    </table>
+    ${c.notes ? `<div style="margin-top:12px">
+      <strong>Notes</strong>
+      <p style="font-size:.88rem;color:var(--text-muted)">${escapeHtml(c.notes)}</p>
+    </div>` : ''}
+    <div style="display:flex;gap:8px;margin-top:16px">
+      ${pdfLink}
+      <button class="btn btn-amber btn-full"
+        onclick="downloadChecklistPDF('${c.id}')">⬇ Download PDF</button>
+    </div>`;
+
+  // Reuse report-detail modal
+  document.getElementById('report-detail-body').innerHTML = body;
+  document.getElementById('report-detail-id').value = id;
+  openModal('modal-report-detail');
+}
+
+async function downloadChecklistPDF(id) {
+  const { data: c, error } = await sb
+    .from('vehicle_checklists')
+    .select('*, profiles!vehicle_checklists_driver_id_fkey(name, driver_id)')
+    .eq('id', id)
+    .single();
+  if (error || !c) { toast(error?.message || 'Not found', 'error'); return; }
+  toast('Generating checklist PDF…', 'info', 4000);
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ unit: 'mm', format: 'a4' });
+  const W = doc.internal.pageSize.getWidth();
+  // Header
+  doc.setFillColor(15, 39, 68);
+  doc.rect(0, 0, W, 26, 'F');
+  doc.setTextColor(255, 255, 255);
+  doc.setFontSize(16); doc.setFont('helvetica', 'bold');
+  doc.text('INYATHI Vehicle Checklist', 14, 12);
+  doc.setFontSize(9); doc.setFont('helvetica', 'normal');
+  doc.text(CONFIG.COMPANY_NAME, 14, 20);
+  let y = 36;
+  doc.setTextColor(20, 20, 20); doc.setFontSize(10);
+  const meta = [
+    ['Vehicle', c.vehicle_reg],
+    ['Date', c.checklist_date],
+    ['Driver', c.profiles?.name || c.driver_id],
+    ['Status', c.status],
+  ];
+  meta.forEach(([label, value]) => {
+    doc.setFont('helvetica', 'bold'); doc.text(label + ':', 14, y);
+    doc.setFont('helvetica', 'normal'); doc.text(String(value || '—'), 60, y);
+    y += 7;
+  });
+  y += 4;
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(11);
+  doc.text('Checklist Items', 14, y); y += 7;
+  const ITEMS = ['exterior','interior','mechanical','fluids',
+                 'tires','brakes','lights','safety_gear'];
+  doc.setFontSize(9.5);
+  ITEMS.forEach((key) => {
+    const val = c[key] || '—';
+    doc.setFont('helvetica', 'bold');
+    doc.text(key.charAt(0).toUpperCase() + key.slice(1).replace('_',' ') + ':', 14, y);
+    doc.setFont('helvetica', 'normal');
+    if (val === 'OK') doc.setTextColor(6, 95, 70);
+    else if (val === 'Needs Attention') doc.setTextColor(185, 28, 28);
+    else doc.setTextColor(100, 116, 139);
+    doc.text(val, 70, y);
+    doc.setTextColor(20, 20, 20);
+    y += 7;
+  });
+  if (c.notes) {
+    y += 4;
+    doc.setFont('helvetica', 'bold'); doc.text('Notes:', 14, y); y += 7;
+    doc.setFont('helvetica', 'normal');
+    const lines = doc.splitTextToSize(c.notes, W - 28);
+    doc.text(lines, 14, y);
+  }
+  doc.save(`INYATHI_Checklist_${c.vehicle_reg}_${c.checklist_date}.pdf`);
+  toast('Checklist PDF downloaded', 'success');
+}
+
+window.openChecklistDetail  = openChecklistDetail;
+window.downloadChecklistPDF = downloadChecklistPDF;
 
 // ── TRANSFER RECON REVIEW (ADMIN) ──────────────────────────────
 async function loadTransferReconReview() {
