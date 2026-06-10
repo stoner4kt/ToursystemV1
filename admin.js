@@ -39,6 +39,7 @@
   document.getElementById('btn-signout-sidebar')?.addEventListener('click', signOut);
 
   renderCalendar();
+  await loadPendingDeletionsBadge();
   await loadBookingDropdowns();
 })();
 
@@ -468,6 +469,8 @@ async function openEditBooking(id) {
   renderItineraryPreview(data.itinerary_url);
   document.getElementById('modal-booking-title').textContent = 'Edit Booking';
   openModal('modal-booking');
+  const deleteBtn = document.getElementById('btn-request-delete');
+  if (deleteBtn) deleteBtn.style.display = data.is_locked ? 'none' : 'inline-block';
 }
 
 document.getElementById('form-booking')?.addEventListener('submit', async (e) => {
@@ -697,7 +700,16 @@ async function submitOTPVerification() {
     }
     closeModal('modal-otp-verify');
     toast('OTP verified — saving…', 'success');
-    if (pendingBookingSave) {
+    if (currentOTPContext?.resourceType === 'booking_delete' && pendingBookingDeleteId) {
+      const bId   = pendingBookingDeleteId;
+      const reqId = pendingBookingDeleteReqId;
+      const rsn   = pendingBookingDeleteReason;
+      pendingBookingDeleteId     = null;
+      pendingBookingDeleteReqId  = null;
+      pendingBookingDeleteReason = null;
+      currentOTPContext = null;
+      await executeBookingDeletion(bId, reqId, rsn);
+    } else if (pendingBookingSave) {
       const { id, payload } = pendingBookingSave;
       pendingBookingSave = null;
       currentOTPContext  = null;
@@ -722,6 +734,289 @@ function cancelOTPVerification() {
 
 window.submitOTPVerification = submitOTPVerification;
 window.cancelOTPVerification = cancelOTPVerification;
+
+// ── BOOKING DELETE REQUEST FLOW ───────────────────────────────
+
+function openBookingDeleteRequest() {
+  const id = document.getElementById('booking-id').value;
+  if (!id) return toast('Save the booking first before requesting deletion', 'error');
+  document.getElementById('delete-request-booking-id').value = id;
+  document.getElementById('delete-request-reason').value = '';
+  document.getElementById('delete-request-type').value = 'mistake';
+  closeModal('modal-booking');
+  openModal('modal-booking-delete-request');
+}
+window.openBookingDeleteRequest = openBookingDeleteRequest;
+
+async function submitBookingDeleteRequest() {
+  const bookingId = document.getElementById('delete-request-booking-id').value;
+  const reason    = document.getElementById('delete-request-reason').value.trim();
+  const type      = document.getElementById('delete-request-type').value;
+
+  if (!reason) return toast('Please provide a reason for the deletion request', 'error');
+
+  const btn = document.getElementById('btn-submit-delete-request');
+  btn.disabled = true; btn.textContent = 'Sending OTP…';
+
+  try {
+    const { data: reqData, error: reqError } = await sb
+      .from('booking_delete_requests')
+      .insert({
+        booking_id:        bookingId,
+        requested_by:      currentProfile.id,
+        reason,
+        cancellation_type: type,
+        status:            'pending',
+      })
+      .select()
+      .single();
+
+    if (reqError) throw reqError;
+
+    const res = await fetch(CONFIG.SEND_OTP_FUNCTION_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${CONFIG.SUPABASE_ANON_KEY}`,
+      },
+      body: JSON.stringify({
+        resource_type:  'booking_delete',
+        resource_id:    bookingId,
+        admin_id:       currentProfile.id,
+        context_label:  'Booking Deletion',
+      }),
+    });
+
+    const result = await res.json();
+    if (!res.ok) throw new Error(result.error || 'Failed to send OTP');
+
+    closeModal('modal-booking-delete-request');
+
+    const descEl = document.getElementById('otp-modal-desc');
+    if (descEl) {
+      descEl.textContent =
+        `An OTP has been sent to ${CONFIG.ADMIN_EMAIL}. ` +
+        `Enter it below to authorize the permanent deletion of this booking.`;
+    }
+    const codeEl = document.getElementById('otp-input');
+    if (codeEl) codeEl.value = '';
+    const noticeEl = document.getElementById('otp-attempts-notice');
+    if (noticeEl) noticeEl.style.display = 'none';
+
+    pendingBookingDeleteId      = bookingId;
+    pendingBookingDeleteReqId   = reqData.id;
+    pendingBookingDeleteReason  = reason;
+    currentOTPContext = { resourceId: bookingId, resourceType: 'booking_delete' };
+
+    openModal('modal-otp-verify');
+
+  } catch (err) {
+    toast('Delete request failed: ' + err.message, 'error');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Submit Delete Request & Send OTP';
+  }
+}
+window.submitBookingDeleteRequest = submitBookingDeleteRequest;
+
+let pendingBookingDeleteId     = null;
+let pendingBookingDeleteReqId  = null;
+let pendingBookingDeleteReason = null;
+
+async function executeBookingDeletion(bookingId, deleteReqId, reason) {
+  try {
+    const { data: booking } = await sb
+      .from('bookings')
+      .select('*')
+      .eq('id', bookingId)
+      .single();
+
+    if (!booking) { toast('Booking not found', 'error'); return; }
+
+    await sb.from('booking_edit_log').insert({
+      booking_id:  bookingId,
+      admin_id:    currentProfile?.id,
+      action:      'delete',
+      reason,
+      old_values:  booking,
+      approved_at: new Date().toISOString(),
+    });
+
+    const { error: delError } = await sb
+      .from('bookings')
+      .delete()
+      .eq('id', bookingId);
+
+    if (delError) throw delError;
+
+    if (deleteReqId) {
+      await sb.from('booking_delete_requests').update({
+        status:      'approved',
+        reviewed_by: currentProfile?.id,
+        reviewed_at: new Date().toISOString(),
+      }).eq('id', deleteReqId);
+    }
+
+    toast('Booking permanently deleted', 'success');
+    closeModal('modal-otp-verify');
+    closeModal('modal-booking');
+    await renderCalendar();
+    await loadBookingsArchive();
+    await loadPendingDeletionsBadge();
+
+  } catch (err) {
+    toast('Deletion failed: ' + err.message, 'error');
+  }
+}
+window.executeBookingDeletion = executeBookingDeletion;
+
+// ── PENDING DELETIONS (main admin review) ─────────────────────
+
+async function loadPendingDeletionsBadge() {
+  const { count } = await sb
+    .from('booking_delete_requests')
+    .select('id', { count: 'exact', head: true })
+    .eq('status', 'pending');
+
+  const el   = document.getElementById('stat-pending-deletions');
+  const card = document.getElementById('stat-pending-deletions-card');
+  if (el)   el.textContent = count ?? 0;
+  if (card) card.style.display = (count && count > 0) ? '' : 'none';
+}
+
+async function openPendingDeletionsModal() {
+  openModal('modal-pending-deletions');
+  await loadPendingDeletionsDetail();
+}
+window.openPendingDeletionsModal = openPendingDeletionsModal;
+
+async function loadPendingDeletionsDetail() {
+  const body = document.getElementById('pending-deletions-body');
+  if (!body) return;
+  body.innerHTML = '<div class="spinner"></div>';
+
+  const { data, error } = await sb
+    .from('booking_delete_requests')
+    .select(`
+      *,
+      bookings(invoice_no, client_name, start_date, end_date, status),
+      profiles!booking_delete_requests_requested_by_fkey(name)
+    `)
+    .eq('status', 'pending')
+    .order('created_at', { ascending: false });
+
+  if (error) {
+    body.innerHTML = `<p style="color:var(--red)">${error.message}</p>`;
+    return;
+  }
+
+  if (!data?.length) {
+    body.innerHTML = `<div class="empty-state">
+      <div class="empty-icon">✅</div>
+      <p>No pending deletion requests.</p>
+    </div>`;
+    return;
+  }
+
+  body.innerHTML = data.map((req) => `
+    <div class="inspection-item">
+      <div style="flex:1;min-width:0">
+        <div class="inspection-title">
+          ${escapeHtml(req.bookings?.invoice_no ?? req.booking_id)} —
+          ${escapeHtml(req.bookings?.client_name ?? '—')}
+        </div>
+        <div class="inspection-meta">
+          Requested by: ${escapeHtml(req.profiles?.name ?? '—')} ·
+          ${formatDateTime(req.created_at)}
+        </div>
+        <div style="font-size:.82rem;margin-top:4px">
+          <strong>Type:</strong> ${escapeHtml(req.cancellation_type)} ·
+          <strong>Reason:</strong> ${escapeHtml(req.reason)}
+        </div>
+        <div style="font-size:.78rem;color:var(--text-muted);margin-top:2px">
+          Booking: ${formatDate(req.bookings?.start_date)} →
+          ${formatDate(req.bookings?.end_date)} ·
+          ${statusBadge(req.bookings?.status ?? '—')}
+        </div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:6px;flex-shrink:0">
+        <button class="btn btn-sm btn-danger"
+          onclick="initiateAdminApproveDelete('${req.id}','${req.booking_id}',
+            decodeURIComponent('${encodeURIComponent(req.reason)}'))">
+          Approve &amp; Delete
+        </button>
+        <button class="btn btn-sm btn-outline"
+          onclick="rejectDeleteRequest('${req.id}')">
+          Reject
+        </button>
+      </div>
+    </div>`).join('');
+}
+
+async function initiateAdminApproveDelete(reqId, bookingId, reason) {
+  try {
+    toast('Sending OTP to admin email…', 'info');
+
+    const res = await fetch(CONFIG.SEND_OTP_FUNCTION_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${CONFIG.SUPABASE_ANON_KEY}`,
+      },
+      body: JSON.stringify({
+        resource_type:  'booking_delete',
+        resource_id:    bookingId,
+        admin_id:       currentProfile?.id,
+        context_label:  'Booking Deletion Approval',
+      }),
+    });
+
+    const result = await res.json();
+    if (!res.ok) throw new Error(result.error || 'Failed to send OTP');
+
+    const descEl = document.getElementById('otp-modal-desc');
+    if (descEl) {
+      descEl.textContent =
+        `OTP sent to ${CONFIG.ADMIN_EMAIL}. Verify to permanently delete this booking.`;
+    }
+    const codeEl = document.getElementById('otp-input');
+    if (codeEl) codeEl.value = '';
+    const noticeEl = document.getElementById('otp-attempts-notice');
+    if (noticeEl) noticeEl.style.display = 'none';
+
+    pendingBookingDeleteId     = bookingId;
+    pendingBookingDeleteReqId  = reqId;
+    pendingBookingDeleteReason = reason;
+    currentOTPContext = { resourceId: bookingId, resourceType: 'booking_delete' };
+
+    closeModal('modal-pending-deletions');
+    openModal('modal-otp-verify');
+
+  } catch (err) {
+    toast('OTP request failed: ' + err.message, 'error');
+  }
+}
+window.initiateAdminApproveDelete = initiateAdminApproveDelete;
+
+async function rejectDeleteRequest(reqId) {
+  const reason = prompt('Rejection reason (optional):');
+  const { error } = await sb
+    .from('booking_delete_requests')
+    .update({
+      status:           'rejected',
+      rejection_reason: reason || null,
+      reviewed_by:      currentProfile?.id,
+      reviewed_at:      new Date().toISOString(),
+    })
+    .eq('id', reqId);
+
+  if (error) { toast(error.message, 'error'); return; }
+
+  toast('Deletion request rejected', 'info');
+  await loadPendingDeletionsDetail();
+  await loadPendingDeletionsBadge();
+}
+window.rejectDeleteRequest = rejectDeleteRequest;
 
 // ── MAINTENANCE ALERT (Feature 4) ─────────────────────────────
 async function sendMaintenanceAlertForBooking(bookingId) {
@@ -1444,7 +1739,245 @@ function toggleBookingLockState(data){
 }
 async function completeBooking(bookingId){ if(currentProfile?.role!=='admin') return toast('Only admins can complete bookings','error'); const v=await validateBookingCompletion(bookingId); if(!v.ok) return toast(v.message,'warning'); const {error}=await sb.from('bookings').update({status:'completed',is_locked:true,completed_by:currentProfile.id,completed_at:new Date().toISOString()}).eq('id',bookingId); if(error) return toast(error.message,'error'); toast('Booking completed and locked','success'); closeModal('modal-booking'); await renderCalendar(); }
 document.getElementById('btn-mark-complete')?.addEventListener('click',()=>{const id=document.getElementById('booking-id').value;if(id)completeBooking(id);});
-async function loadIncidentReports(){const {data,error}=await sb.from('incident_reports').select('*').order('created_at',{ascending:false}).limit(100);document.getElementById('incident-list').innerHTML=error?error.message:(data||[]).map(i=>`<div class="inspection-item"><div class="inspection-title">${i.incident_type}</div><div class="inspection-meta">${i.driver_id} · ${i.vehicle_reg} · ${i.status}</div></div>`).join('')||'No incidents';}
+async function loadIncidentReports() {
+  const container = document.getElementById('incident-list');
+  if (!container) return;
+  container.innerHTML = '<div class="spinner"></div>';
+
+  const { data, error } = await sb
+    .from('incident_reports')
+    .select('*, profiles!incident_reports_driver_id_fkey(name)')
+    .order('created_at', { ascending: false })
+    .limit(100);
+
+  if (error) {
+    container.innerHTML = `<p style="color:var(--red)">${error.message}</p>`;
+    return;
+  }
+
+  if (!data?.length) {
+    container.innerHTML = `
+      <div class="empty-state">
+        <div class="empty-icon">🚨</div>
+        <p>No incident reports submitted yet.</p>
+      </div>`;
+    return;
+  }
+
+  container.innerHTML = data.map((inc) => {
+    const photos = Array.isArray(inc.photo_urls)    ? inc.photo_urls    : [];
+    const docs   = Array.isArray(inc.document_urls) ? inc.document_urls : [];
+    return `
+      <div class="inspection-item" onclick="openIncidentDetail('${inc.id}')">
+        <div style="flex:1;min-width:0">
+          <div class="inspection-title">
+            ${escapeHtml(inc.vehicle_reg)} —
+            ${escapeHtml(inc.incident_type)}
+          </div>
+          <div class="inspection-meta">
+            ${escapeHtml(inc.profiles?.name ?? inc.driver_id)} ·
+            ${formatDateTime(inc.created_at)}
+            ${inc.injuries
+              ? ' · <span style="color:var(--red);font-weight:700">⚠ Injuries</span>'
+              : ''}
+          </div>
+          ${inc.location
+            ? `<div style="font-size:.78rem;color:var(--text-muted)">
+                📍 ${escapeHtml(inc.location)}
+               </div>`
+            : ''}
+          <div style="font-size:.78rem;color:var(--text-muted);margin-top:3px">
+            ${photos.length} photo(s) · ${docs.length} document(s)
+          </div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:6px;flex-shrink:0">
+          ${statusBadge(inc.status)}
+          <button class="btn btn-sm btn-outline"
+            onclick="event.stopPropagation();openIncidentDetail('${inc.id}')">
+            View
+          </button>
+        </div>
+      </div>`;
+  }).join('');
+}
+
+async function openIncidentDetail(id) {
+  const { data: inc, error } = await sb
+    .from('incident_reports')
+    .select('*, profiles!incident_reports_driver_id_fkey(name)')
+    .eq('id', id)
+    .single();
+
+  if (error || !inc) {
+    toast(error?.message || 'Incident not found', 'error');
+    return;
+  }
+
+  const photos = Array.isArray(inc.photo_urls)    ? inc.photo_urls    : [];
+  const docs   = Array.isArray(inc.document_urls) ? inc.document_urls : [];
+
+  let photosHtml = '';
+  if (photos.length) {
+    const photoItems = photos.map((p, i) => {
+      if (p.public_id) {
+        return `<div class="media-preview-item">
+          <img id="inc-photo-${id}-${i}"
+            src="/icons/icon-192.png"
+            alt="${escapeHtml(p.filename || 'photo')}"
+            data-public-id="${escapeHtml(p.public_id)}"
+            data-resource-type="${escapeHtml(p.resource_type || 'image')}"
+            style="width:100%;height:80px;object-fit:cover;border-radius:8px;
+                   border:1px solid var(--border)">
+        </div>`;
+      }
+      return `<div class="media-preview-item">
+        <a href="${escapeHtml(p.url)}" target="_blank" rel="noopener">
+          <img src="${escapeHtml(p.url)}"
+            alt="${escapeHtml(p.filename || 'photo')}"
+            style="width:100%;height:80px;object-fit:cover;border-radius:8px">
+        </a>
+      </div>`;
+    }).join('');
+    photosHtml = `
+      <div style="margin-top:14px">
+        <strong>Photos (${photos.length})</strong>
+        <div class="media-preview" style="margin-top:8px">${photoItems}</div>
+      </div>`;
+  }
+
+  let docsHtml = '';
+  if (docs.length) {
+    const docLinks = docs.map((d) => {
+      if (d.public_id) {
+        return `<a class="doc-preview-item" style="cursor:pointer"
+          href="#"
+          onclick="(async(e)=>{
+            e.preventDefault();
+            const url=await getSignedUrl('${escapeHtml(d.public_id)}',
+              '${escapeHtml(d.resource_type||'raw')}',true);
+            if(url) window.open(url,'_blank','noopener');
+            else toast('Could not generate link','error');
+          })(event)">
+          <span class="doc-preview-icon">📄</span>
+          <div class="doc-preview-meta">
+            <span class="doc-preview-name">${escapeHtml(d.filename || 'Document')}</span>
+          </div>
+        </a>`;
+      }
+      return `<a class="doc-preview-item" href="${escapeHtml(d.url)}"
+        target="_blank" rel="noopener">
+        <span class="doc-preview-icon">📄</span>
+        <div class="doc-preview-meta">
+          <span class="doc-preview-name">${escapeHtml(d.filename || 'Document')}</span>
+        </div>
+      </a>`;
+    }).join('');
+    docsHtml = `
+      <div style="margin-top:14px">
+        <strong>Documents (${docs.length})</strong>
+        <div class="doc-preview-list" style="margin-top:8px">${docLinks}</div>
+      </div>`;
+  }
+
+  document.getElementById('report-detail-body').innerHTML = `
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px">
+      <div><strong>Vehicle</strong><p>${escapeHtml(inc.vehicle_reg)}</p></div>
+      <div><strong>Type</strong><p>${statusBadge(inc.incident_type)}</p></div>
+      <div><strong>Driver</strong>
+        <p>${escapeHtml(inc.profiles?.name ?? inc.driver_id)}</p></div>
+      <div><strong>Date</strong><p>${formatDateTime(inc.created_at)}</p></div>
+      <div><strong>Location</strong><p>${escapeHtml(inc.location || '—')}</p></div>
+      <div><strong>Injuries</strong>
+        <p>${inc.injuries
+          ? '<span style="color:var(--red);font-weight:700">⚠ Yes</span>'
+          : 'No'}</p></div>
+    </div>
+    <div style="margin-bottom:12px">
+      <strong>Description</strong>
+      <p style="font-size:.88rem;margin-top:6px;line-height:1.55">
+        ${escapeHtml(inc.description || '—')}
+      </p>
+    </div>
+    ${statusBadge(inc.status)}
+    ${photosHtml}
+    ${docsHtml}
+    <div style="margin-top:18px">
+      <div class="form-group">
+        <label>Admin Notes</label>
+        <textarea id="incident-admin-notes-${inc.id}" class="form-control" rows="3"
+          placeholder="Internal notes, follow-up actions…"
+        >${escapeHtml(inc.admin_notes || '')}</textarea>
+      </div>
+      <div style="display:flex;gap:8px;margin-top:8px">
+        <button class="btn btn-amber"
+          onclick="saveIncidentAdminNotes('${inc.id}')">
+          Save Notes
+        </button>
+        <select id="incident-status-select-${inc.id}" class="form-control"
+          style="max-width:160px">
+          <option value="reported"  ${inc.status==='reported'  ?'selected':''}>Reported</option>
+          <option value="reviewed"  ${inc.status==='reviewed'  ?'selected':''}>Reviewed</option>
+          <option value="closed"    ${inc.status==='closed'    ?'selected':''}>Closed</option>
+        </select>
+        <button class="btn btn-outline"
+          onclick="updateIncidentStatus('${inc.id}')">
+          Update Status
+        </button>
+      </div>
+    </div>`;
+
+  document.getElementById('report-detail-id').value = id;
+  openModal('modal-report-detail');
+
+  photos.forEach((p, i) => {
+    if (!p.public_id) return;
+    const imgEl = document.getElementById(`inc-photo-${id}-${i}`);
+    if (!imgEl) return;
+    renderSecureMedia(imgEl, p.public_id, p.resource_type || 'image')
+      .then(() => {
+        const link = imgEl.closest('a');
+        if (link && imgEl.src) link.href = imgEl.src;
+      })
+      .catch(console.warn);
+  });
+}
+
+async function saveIncidentAdminNotes(incidentId) {
+  const notes = document.getElementById(`incident-admin-notes-${incidentId}`)?.value || '';
+  const { error } = await sb
+    .from('incident_reports')
+    .update({ admin_notes: notes })
+    .eq('id', incidentId);
+
+  if (error) { toast(error.message, 'error'); return; }
+  toast('Notes saved', 'success');
+}
+
+async function updateIncidentStatus(incidentId) {
+  const status = document.getElementById(
+    `incident-status-select-${incidentId}`
+  )?.value;
+
+  if (!status) return;
+
+  const { error } = await sb
+    .from('incident_reports')
+    .update({
+      status,
+      reviewed_by: currentProfile?.id,
+      reviewed_at: new Date().toISOString(),
+    })
+    .eq('id', incidentId);
+
+  if (error) { toast(error.message, 'error'); return; }
+  toast(`Status updated to ${status}`, 'success');
+  closeModal('modal-report-detail');
+  loadIncidentReports();
+}
+
+window.openIncidentDetail      = openIncidentDetail;
+window.saveIncidentAdminNotes  = saveIncidentAdminNotes;
+window.updateIncidentStatus    = updateIncidentStatus;
 async function loadWagesReconciliation() {
   const { data, error } = await sb.from('recon_sheets').select('*').order('created_at', { ascending: false }).limit(100);
   document.getElementById('wages-list').innerHTML = error ? error.message : (data || []).map((r) => `

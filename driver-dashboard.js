@@ -283,8 +283,214 @@ document.getElementById('recon-slip-photos')
 
 async function loadDriverChecklists(){document.getElementById('checklist-date').value=new Date().toISOString().split('T')[0]; document.getElementById('checklist-items').innerHTML=['exterior','interior','mechanical','fluids','tires','brakes','lights','safety_gear'].map(k=>`<label>${k}<select id="chk-${k}" class="form-control"><option>OK</option><option>Needs Attention</option><option>N/A</option></select></label>`).join(''); const {data:v}=await sb.from('bookings').select('assigned_vehicle_reg').eq('assigned_driver_id',currentProfile.driver_id); const regs=[...new Set((v||[]).map(x=>x.assigned_vehicle_reg).filter(Boolean))]; document.getElementById('checklist-vehicle').innerHTML=regs.map(r=>`<option>${r}</option>`).join(''); const {data}=await sb.from('vehicle_checklists').select('*').eq('driver_id',currentProfile.driver_id).order('checklist_date',{ascending:false}); document.getElementById('checklist-history').innerHTML=(data||[]).map(c=>`<div>${c.checklist_date} · ${c.vehicle_reg} · ${c.status}</div>`).join('');}
 document.getElementById('checklist-form')?.addEventListener('submit', async (e)=>{e.preventDefault(); const pdf=document.getElementById('checklist-pdf-input').files[0]; const pdf_url=pdf ? await uploadToCloudinary(pdf,'driver-documents') : null; const payload={vehicle_reg:document.getElementById('checklist-vehicle').value,driver_id:currentProfile.driver_id,checklist_date:document.getElementById('checklist-date').value,exterior:document.getElementById('chk-exterior').value,interior:document.getElementById('chk-interior').value,mechanical:document.getElementById('chk-mechanical').value,fluids:document.getElementById('chk-fluids').value,tires:document.getElementById('chk-tires').value,brakes:document.getElementById('chk-brakes').value,lights:document.getElementById('chk-lights').value,safety_gear:document.getElementById('chk-safety_gear').value,notes:document.getElementById('checklist-notes').value||null,pdf_url,status:'completed'}; const {error}=await sb.from('vehicle_checklists').insert(payload); if(error) return toast(error.message,'error'); toast('Checklist submitted','success'); await loadDriverChecklists();});
-async function loadDriverIncidents(){const {data:b}=await sb.from('bookings').select('id,invoice_no').eq('assigned_driver_id',currentProfile.driver_id).order('start_date',{ascending:false}); document.getElementById('incident-booking').innerHTML=(b||[]).map(x=>`<option value="${x.id}">${x.invoice_no}</option>`).join(''); const {data}=await sb.from('incident_reports').select('*').eq('driver_id',currentProfile.driver_id).order('created_at',{ascending:false}); document.getElementById('incident-history').innerHTML=(data||[]).map(i=>`<div>${i.incident_type} · ${i.status}</div>`).join('');}
-document.getElementById('incident-form')?.addEventListener('submit', async (e)=>{e.preventDefault(); const _incPdf=document.getElementById('incident-pdf').files[0]; const pdf=_incPdf ? await uploadToCloudinary(_incPdf,'driver-documents') : null; const payload={booking_id:document.getElementById('incident-booking').value,driver_id:currentProfile.driver_id,vehicle_reg:null,incident_type:document.getElementById('incident-type').value||'other',description:document.getElementById('incident-description').value,location:document.getElementById('incident-location').value||null,injuries:document.getElementById('incident-injuries').checked,pdf_url:pdf,status:'reported'}; const {error}=await sb.from('incident_reports').insert(payload); if(error) return toast(error.message,'error'); toast('Incident submitted','success'); await loadDriverIncidents();});
+async function loadDriverIncidents() {
+  const today = new Date().toISOString().split('T')[0];
+  const { data: bookings } = await sb
+    .from('bookings')
+    .select('id, invoice_no, assigned_vehicle_reg, rented_vehicle_reg, is_rented_vehicle')
+    .eq('assigned_driver_id', currentProfile.driver_id)
+    .order('start_date', { ascending: false })
+    .limit(50);
+
+  const sel = document.getElementById('incident-booking');
+  if (sel) {
+    sel.innerHTML = '<option value="">— Select booking —</option>';
+    (bookings || []).forEach((b) => {
+      const opt = document.createElement('option');
+      opt.value = b.id;
+      const reg = b.is_rented_vehicle
+        ? (b.rented_vehicle_reg || 'Rented')
+        : (b.assigned_vehicle_reg || '');
+      opt.dataset.vehicleReg = reg;
+      opt.textContent = `${b.invoice_no}${reg ? ' — ' + reg : ''}`;
+      sel.appendChild(opt);
+    });
+  }
+
+  sel?.addEventListener('change', function () {
+    const opt = this.options[this.selectedIndex];
+    const regInput = document.getElementById('incident-vehicle-reg');
+    if (opt && opt.dataset.vehicleReg && regInput) {
+      regInput.value = opt.dataset.vehicleReg;
+    }
+  });
+
+  document.getElementById('incident-photos')
+    ?.addEventListener('change', (e) => {
+      const preview = document.getElementById('incident-photo-preview');
+      if (!preview) return;
+      Array.from(e.target.files).forEach((file) => {
+        const img = document.createElement('img');
+        img.src = URL.createObjectURL(file);
+        img.style.cssText =
+          'width:100%;height:82px;object-fit:cover;border-radius:10px;border:1px solid var(--border)';
+        preview.appendChild(img);
+      });
+    });
+
+  await loadIncidentHistory();
+}
+
+async function loadIncidentHistory() {
+  const container = document.getElementById('incident-history');
+  if (!container) return;
+  container.innerHTML = '<div class="spinner"></div>';
+
+  const { data, error } = await sb
+    .from('incident_reports')
+    .select('*')
+    .eq('driver_id', currentProfile.driver_id)
+    .order('created_at', { ascending: false })
+    .limit(30);
+
+  if (error) {
+    container.innerHTML =
+      `<p style="color:var(--red)">${error.message}</p>`;
+    return;
+  }
+
+  if (!data?.length) {
+    container.innerHTML = `
+      <div class="empty-state">
+        <div class="empty-icon">📋</div>
+        <p>No incident reports submitted yet.</p>
+      </div>`;
+    return;
+  }
+
+  container.innerHTML = data.map((inc) => {
+    const photos = Array.isArray(inc.photo_urls) ? inc.photo_urls : [];
+    const docs   = Array.isArray(inc.document_urls) ? inc.document_urls : [];
+    return `
+      <div class="inspection-item">
+        <div style="flex:1;min-width:0">
+          <div class="inspection-title">
+            ${escapeHtml(inc.vehicle_reg)} · ${escapeHtml(inc.incident_type)}
+          </div>
+          <div class="inspection-meta">
+            ${formatDateTime(inc.created_at)}
+            ${inc.injuries ? ' · ⚠ Injuries reported' : ''}
+          </div>
+          ${inc.location
+            ? `<div style="font-size:.78rem;color:var(--text-muted)">
+                📍 ${escapeHtml(inc.location)}
+               </div>`
+            : ''}
+          <div style="font-size:.78rem;color:var(--text-muted);margin-top:3px">
+            ${photos.length} photo(s) · ${docs.length} document(s)
+          </div>
+        </div>
+        ${statusBadge(inc.status)}
+      </div>`;
+  }).join('');
+}
+
+document.getElementById('incident-form')
+  ?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const btn = e.target.querySelector('[type="submit"]');
+    btn.disabled = true; btn.textContent = 'Submitting…';
+
+    try {
+      const vehicleReg = document.getElementById('incident-vehicle-reg')
+        .value.trim().toUpperCase();
+
+      if (!vehicleReg) {
+        toast('Vehicle registration is required', 'error');
+        return;
+      }
+
+      const incidentType = document.getElementById('incident-type').value;
+      if (!incidentType) {
+        toast('Please select an incident type', 'error');
+        return;
+      }
+
+      const description = document.getElementById('incident-description').value.trim();
+      if (!description) {
+        toast('Please describe the incident', 'error');
+        return;
+      }
+
+      const photoFiles = Array.from(
+        document.getElementById('incident-photos')?.files || []
+      );
+      const photoUrls = [];
+      if (photoFiles.length > 0) {
+        toast('Uploading incident photos…', 'info');
+        for (const f of photoFiles) {
+          if (f.size > 10 * 1024 * 1024) {
+            toast(`File too large (max 10 MB): ${f.name}`, 'error');
+            return;
+          }
+          const upload = await uploadToCloudinary(f, 'incidents');
+          photoUrls.push({
+            url:           upload.url,
+            public_id:     upload.public_id,
+            resource_type: upload.resource_type,
+            filename:      f.name,
+            size:          f.size,
+            uploaded_at:   new Date().toISOString(),
+          });
+        }
+      }
+
+      const docFiles = Array.from(
+        document.getElementById('incident-pdf')?.files || []
+      );
+      const documentUrls = [];
+      if (docFiles.length > 0) {
+        toast('Uploading supporting documents…', 'info');
+        for (const f of docFiles) {
+          if (f.size > 10 * 1024 * 1024) {
+            toast(`File too large (max 10 MB): ${f.name}`, 'error');
+            return;
+          }
+          const upload = await uploadToCloudinary(f, 'incident-documents');
+          documentUrls.push({
+            url:           upload.url,
+            public_id:     upload.public_id,
+            resource_type: upload.resource_type,
+            filename:      f.name,
+            size:          f.size,
+            uploaded_at:   new Date().toISOString(),
+          });
+        }
+      }
+
+      const bookingId = document.getElementById('incident-booking')?.value || null;
+
+      const payload = {
+        booking_id:     bookingId || null,
+        driver_id:      currentProfile.driver_id,
+        vehicle_reg:    vehicleReg,
+        incident_type:  incidentType,
+        description,
+        location:       document.getElementById('incident-location')?.value.trim() || null,
+        injuries:       document.getElementById('incident-injuries')?.checked ?? false,
+        photo_urls:     photoUrls,
+        document_urls:  documentUrls,
+        status:         'reported',
+      };
+
+      const { error } = await sb.from('incident_reports').insert(payload);
+      if (error) throw error;
+
+      toast('Incident report submitted successfully', 'success');
+
+      e.target.reset();
+      const preview = document.getElementById('incident-photo-preview');
+      if (preview) preview.innerHTML = '';
+
+      await loadIncidentHistory();
+
+    } catch (err) {
+      toast('Submission failed: ' + err.message, 'error');
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'Submit Incident Report';
+    }
+  });
 async function loadMyDocuments(){const [i,c,n,r]=await Promise.all([sb.from('inspections').select('id,created_at,pdf_urls').eq('driver_id',currentProfile.driver_id),sb.from('vehicle_checklists').select('id,checklist_date,pdf_url').eq('driver_id',currentProfile.driver_id),sb.from('incident_reports').select('id,incident_date,pdf_url').eq('driver_id',currentProfile.driver_id),sb.from('recon_sheets').select('id,week_start,week_end').eq('driver_id',currentProfile.driver_id)]); const docs=[]; (i.data||[]).forEach(x=>(x.pdf_urls||[]).forEach(u=>docs.push(`<li>Inspection (${x.created_at}) <a href="${u}" target="_blank">PDF</a></li>`))); (c.data||[]).forEach(x=>docs.push(`<li>Checklist ${x.checklist_date} ${x.pdf_url?`<a href="${x.pdf_url}" target="_blank">PDF</a>`:''}</li>`)); (n.data||[]).forEach(x=>docs.push(`<li>Incident ${x.incident_date} ${x.pdf_url?`<a href="${x.pdf_url}" target="_blank">PDF</a>`:''}</li>`)); (r.data||[]).forEach(x=>docs.push(`<li>Recon ${x.week_start} - ${x.week_end}</li>`)); document.getElementById('my-documents-list').innerHTML=`<ul>${docs.join('')}</ul>`;}
 
 // ── TRANSFER RECON ─────────────────────────────────────────────

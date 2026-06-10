@@ -153,6 +153,10 @@
       <div class="stat-card"><div class="stat-value" id="stat-confirmed" style="color:var(--green)">—</div><div class="stat-label">Confirmed</div></div>
       <div class="stat-card"><div class="stat-value" id="stat-pending" style="color:var(--amber)">—</div><div class="stat-label">Pending</div></div>
       <div class="stat-card"><div class="stat-value" id="stat-invoiced" style="color:var(--navy-mid)">—</div><div class="stat-label">Invoiced</div></div>
+      <div class="stat-card" id="stat-pending-deletions-card" style="cursor:pointer;display:none" onclick="openPendingDeletionsModal()">
+        <div class="stat-value" id="stat-pending-deletions" style="color:var(--red)">—</div>
+        <div class="stat-label">Deletion Requests</div>
+      </div>
     </section>
 
     <div class="card">
@@ -491,7 +495,7 @@
         <div id="booking-itinerary-preview" style="margin-top:6px;font-size:.82rem"></div>
       </div>
       <div id="booking-lock-notice" style="display:none;color:var(--red);font-weight:700">🔒 Booking is locked after completion.</div>
-      <div style="display:flex;gap:8px"><button type="submit" class="btn btn-amber btn-full">Save Booking</button><button type="button" id="btn-mark-complete" class="btn btn-outline">Mark as Complete</button></div>
+      <div style="display:flex;gap:8px"><button type="submit" class="btn btn-amber btn-full">Save Booking</button><button type="button" id="btn-mark-complete" class="btn btn-outline">Mark as Complete</button><button type="button" id="btn-request-delete" class="btn btn-danger btn-sm" onclick="openBookingDeleteRequest()" style="display:none">🗑 Request Deletion</button></div>
     </form>
   </div>
 </div>
@@ -582,6 +586,56 @@
 </div>
 
 <div id="toast-container"></div>
+
+<!-- Booking Delete Request Modal -->
+<div class="modal-overlay" id="modal-booking-delete-request">
+  <div class="modal" style="max-width:480px">
+    <div class="modal-header">
+      <span class="modal-title">🗑 Request Booking Deletion</span>
+      <button class="modal-close" onclick="closeModal('modal-booking-delete-request')">✕</button>
+    </div>
+    <input type="hidden" id="delete-request-booking-id">
+    <p style="font-size:.85rem;color:var(--text-muted);margin-bottom:16px;line-height:1.5">
+      Deletion is permanent and irreversible. An OTP will be sent to the main admin email
+      for authorization. Provide a clear reason before submitting.
+    </p>
+    <div class="form-group">
+      <label>Reason for Deletion <span class="required">*</span></label>
+      <textarea id="delete-request-reason" class="form-control" rows="3"
+        placeholder="Explain why this booking must be deleted…" required></textarea>
+    </div>
+    <div class="form-group">
+      <label>Cancellation Type <span class="required">*</span></label>
+      <select id="delete-request-type" class="form-control">
+        <option value="mistake">Admin / data entry mistake</option>
+        <option value="client_cancelled">Client cancelled</option>
+      </select>
+    </div>
+    <div style="display:flex;gap:8px">
+      <button class="btn btn-danger btn-full" id="btn-submit-delete-request"
+              onclick="submitBookingDeleteRequest()">
+        Submit Delete Request &amp; Send OTP
+      </button>
+      <button class="btn btn-outline" onclick="closeModal('modal-booking-delete-request')">
+        Cancel
+      </button>
+    </div>
+    <p style="font-size:.72rem;color:var(--text-muted);text-align:center;margin-top:10px">
+      OTP valid for 15 minutes · irreversible once approved
+    </p>
+  </div>
+</div>
+
+<!-- Pending Deletions Review Modal (main admin only) -->
+<div class="modal-overlay" id="modal-pending-deletions">
+  <div class="modal" style="max-width:620px">
+    <div class="modal-header">
+      <span class="modal-title">Pending Booking Deletions</span>
+      <button class="modal-close" onclick="closeModal('modal-pending-deletions')">✕</button>
+    </div>
+    <div id="pending-deletions-body"><div class="spinner"></div></div>
+  </div>
+</div>
 
 <!-- ── SCRIPTS ──────────────────────────────────────────────── -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
