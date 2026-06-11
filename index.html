@@ -87,6 +87,11 @@
       </button>
     </div>
     <div class="sidebar-nav-item">
+      <button class="sidebar-nav-link" data-tab="inspections" onclick="switchTab('inspections')">
+        <span class="sidebar-nav-icon">🔍</span> Inspections
+      </button>
+    </div>
+    <div class="sidebar-nav-item">
       <button class="sidebar-nav-link" data-tab="bookings-archive" onclick="switchTab('bookings-archive')">
         <span class="sidebar-nav-icon">📚</span> Bookings Archive
       </button>
@@ -140,6 +145,7 @@
   <button class="tab-btn" data-tab="checklists">🛠 Vehicle Checklists</button>
   <button class="tab-btn" data-tab="traffic-fines">🚦 Traffic Fines</button>
   <button class="tab-btn" data-tab="reports">📋 Reports</button>
+  <button class="tab-btn" data-tab="inspections">🔍 Inspections</button>
   <button class="tab-btn" data-tab="bookings-archive">📚 Bookings Archive</button>
 </nav>
 
@@ -379,6 +385,40 @@
     </div>
   </div>
 
+  <!-- ═══ INSPECTIONS TAB ═══ -->
+  <div class="tab-panel" id="tab-inspections">
+    <div class="card">
+      <div class="card-header">
+        <div>
+          <div class="card-title">Inspection Sheets</div>
+          <div class="card-subtitle">All vehicle inspections — click any row to view detail or download PDF</div>
+        </div>
+        <button class="btn btn-amber" onclick="openAdminInspectionModal()">+ New Inspection</button>
+      </div>
+      <div class="form-row" style="margin-bottom:12px">
+        <div class="form-group">
+          <label>Vehicle Reg</label>
+          <input type="text" id="insp-filter-vehicle" class="form-control"
+            placeholder="e.g. CA 123" oninput="loadAdminInspections()">
+        </div>
+        <div class="form-group">
+          <label>Date</label>
+          <input type="date" id="insp-filter-date" class="form-control"
+            onchange="loadAdminInspections()">
+        </div>
+        <div class="form-group" style="display:flex;align-items:flex-end">
+          <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-weight:600;margin-bottom:0">
+            <input type="checkbox" id="insp-filter-faults"
+              style="width:16px;height:16px;accent-color:var(--red)"
+              onchange="loadAdminInspections()">
+            Faults only
+          </label>
+        </div>
+      </div>
+      <div id="admin-inspections-list"><div class="spinner"></div></div>
+    </div>
+  </div>
+
   <div class="tab-panel" id="tab-bookings-archive">
     <div class="card">
       <div class="card-title">Bookings Archive</div>
@@ -495,7 +535,86 @@
         <div id="booking-itinerary-preview" style="margin-top:6px;font-size:.82rem"></div>
       </div>
       <div id="booking-lock-notice" style="display:none;color:var(--red);font-weight:700">🔒 Booking is locked after completion.</div>
-      <div style="display:flex;gap:8px"><button type="submit" class="btn btn-amber btn-full">Save Booking</button><button type="button" id="btn-mark-complete" class="btn btn-outline">Mark as Complete</button><button type="button" id="btn-request-delete" class="btn btn-danger btn-sm" onclick="openBookingDeleteRequest()" style="display:none">🗑 Request Deletion</button></div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap"><button type="submit" class="btn btn-amber btn-full">Save Booking</button><button type="button" id="btn-mark-complete" class="btn btn-outline">Mark as Complete</button><button type="button" id="btn-request-delete" class="btn btn-danger btn-sm" onclick="openBookingDeleteRequest()" style="display:none">🗑 Request Deletion</button><button type="button" id="btn-add-inspection" class="btn btn-outline btn-sm" onclick="openAdminInspectionFromBooking()" style="display:none">🔍 Add Inspection</button></div>
+    </form>
+  </div>
+</div>
+
+<!-- Admin Inspection Modal -->
+<div class="modal-overlay" id="modal-admin-inspection">
+  <div class="modal" style="max-width:680px;max-height:92vh;overflow-y:auto">
+    <div class="modal-header">
+      <span class="modal-title">🔍 Admin Inspection Sheet</span>
+      <button class="modal-close" onclick="closeModal('modal-admin-inspection')">✕</button>
+    </div>
+    <form id="form-admin-inspection" onsubmit="event.preventDefault()">
+      <div class="form-row">
+        <div class="form-group">
+          <label>Link to Booking</label>
+          <select id="admin-insp-booking" class="form-control">
+            <option value="">— No booking link —</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Invoice No</label>
+          <input type="text" id="admin-insp-invoice" class="form-control"
+            placeholder="Auto-filled from booking">
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Fleet Vehicle</label>
+          <select id="admin-insp-vehicle" class="form-control">
+            <option value="">— Select fleet vehicle —</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Or Reg (rented / external)</label>
+          <input type="text" id="admin-insp-vehicle-manual" class="form-control"
+            placeholder="e.g. CA 123 456" style="text-transform:uppercase">
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Inspection Type <span class="required">*</span></label>
+          <select id="admin-insp-type" class="form-control" required>
+            <option value="">— Select type —</option>
+            <option value="pre-trip">Pre-Trip</option>
+            <option value="post-trip">Post-Trip</option>
+            <option value="routine">Routine</option>
+            <option value="damage">Damage Assessment</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Mileage at Inspection</label>
+          <input type="number" id="admin-insp-mileage" class="form-control"
+            placeholder="e.g. 154200" min="0">
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Notes</label>
+        <textarea id="admin-insp-notes" class="form-control" rows="2"
+          placeholder="Additional observations…"></textarea>
+      </div>
+      <div style="margin:14px 0 6px;font-weight:700;color:var(--navy);font-size:.92rem;border-top:1px solid var(--border);padding-top:12px">
+        Vehicle Inspection Checklist
+      </div>
+      <div id="admin-checklist-container"></div>
+      <div id="admin-fault-summary" style="margin-top:8px"></div>
+      <div class="form-group" style="margin-top:14px">
+        <label>Inspection Photos</label>
+        <label style="display:flex;align-items:center;gap:10px;cursor:pointer;padding:10px;border:1.5px dashed var(--border);border-radius:var(--radius);font-size:.85rem;color:var(--text-muted)">
+          <span>📷 Tap to add photos</span>
+          <input type="file" id="admin-insp-photos" accept="image/*"
+            capture="environment" multiple style="display:none">
+        </label>
+        <div id="admin-insp-media-preview" style="display:flex;flex-wrap:wrap;gap:4px;margin-top:8px"></div>
+      </div>
+      <button type="button" id="btn-submit-admin-inspection"
+        class="btn btn-amber btn-full" style="margin-top:14px;padding:13px"
+        onclick="submitAdminInspection()">
+        Submit Inspection
+      </button>
     </form>
   </div>
 </div>
