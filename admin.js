@@ -63,6 +63,7 @@ function switchTab(target) {
   if (target === 'checklists') loadVehicleChecklists();
   if (target === 'transfer-recon') loadTransferReconReview();
   if (target === 'reports')  loadReports();
+  if (target === 'inspections') loadAdminInspections();
   if (target === 'traffic-fines') initTrafficFinesDashboard();
   if (target === 'bookings-archive')  loadBookingsArchive();
 }
@@ -231,6 +232,23 @@ async function renderCalendar() {
   loadCalendarStats();
 }
 
+// ── PAYMENT STATUS HELPERS ────────────────────────────────────
+function paymentStatusBadge(b) {
+  const ps = b.payment_status || (b.receipt_number ? 'paid' : 'unpaid');
+  if (ps === 'paid')
+    return `<span class="badge badge-green" title="${b.receipt_number ? 'RCP: ' + escapeHtml(b.receipt_number) : 'Paid'}">✓ Paid</span>`;
+  if (ps === 'partially_paid')
+    return `<span class="badge badge-amber">◑ Partial</span>`;
+  return `<span class="badge" style="background:#fee2e2;color:var(--red)">✗ Unpaid</span>`;
+}
+function paymentDotColor(b) {
+  if (b.status === 'cancelled') return 'var(--red)';
+  const ps = b.payment_status || (b.receipt_number ? 'paid' : 'unpaid');
+  if (ps === 'paid')            return 'var(--green)';
+  if (ps === 'partially_paid')  return 'var(--amber)';
+  return 'var(--orange)';
+}
+
 function showBookingsForDate(dateStr, cell) {
   document.querySelectorAll('.cal-day.selected').forEach((el) => el.classList.remove('selected'));
   cell.classList.add('selected');
@@ -241,11 +259,11 @@ function showBookingsForDate(dateStr, cell) {
     return;
   }
   container.innerHTML = dayBookings.map((b) => `
-    <div class="booking-item ${b.receipt_number ? 'booking-paid' : 'booking-unpaid'}">
-      <div class="booking-dot" style="background:${b.receipt_number ? 'var(--green)' : b.status==='cancelled' ? 'var(--red)' : 'var(--orange)'}"></div>
+    <div class="booking-item ${b.payment_status === 'paid' || b.receipt_number ? 'booking-paid' : b.payment_status === 'partially_paid' ? 'booking-partial' : 'booking-unpaid'}">
+      <div class="booking-dot" style="background:${paymentDotColor(b)}"></div>
       <div class="booking-info">
         <div class="booking-route">${b.client_name} — ${b.tour_reference || b.route || 'Tour Ref TBC'}</div>
-        <div class="booking-meta">${b.invoice_no} · ${b.assigned_driver_id || 'Unassigned'} · ${b.is_rented_vehicle ? (b.rented_vehicle_reg || 'Rented vehicle') : (b.assigned_vehicle_reg || 'No vehicle')}${b.receipt_number ? ' · <span style="color:var(--green);font-weight:700">RCP: ' + b.receipt_number + '</span>' : ' · <span style="color:var(--orange);font-weight:600">Unpaid</span>'}</div>
+        <div class="booking-meta">${b.invoice_no} · ${b.assigned_driver_id || 'Unassigned'} · ${b.is_rented_vehicle ? (b.rented_vehicle_reg || 'Rented vehicle') : (b.assigned_vehicle_reg || 'No vehicle')} · ${paymentStatusBadge(b)}</div>
         ${b.is_rented_vehicle
           ? `<span class="badge badge-amber" title="${b.rented_vehicle_reg || ''}">🚗 Rented${b.rented_vehicle_reg ? ': ' + b.rented_vehicle_reg : ''}</span>`
           : ''}
@@ -310,6 +328,8 @@ function resetBookingForm() {
   if (itinInput) itinInput.value = '';
   renderBookingDocumentsList();
   renderItineraryPreview(null);
+  const addInspBtn = document.getElementById('btn-add-inspection');
+  if (addInspBtn) addInspBtn.style.display = 'none';
 }
 function bookingDocumentHref(doc, asAttachment = true) {
   if (doc?.url && !doc?.public_id) return doc.url;
@@ -471,6 +491,8 @@ async function openEditBooking(id) {
   openModal('modal-booking');
   const deleteBtn = document.getElementById('btn-request-delete');
   if (deleteBtn) deleteBtn.style.display = data.is_locked ? 'none' : 'inline-block';
+  const addInspBtn = document.getElementById('btn-add-inspection');
+  if (addInspBtn) addInspBtn.style.display = 'inline-block';
 }
 
 document.getElementById('form-booking')?.addEventListener('submit', async (e) => {
@@ -488,6 +510,15 @@ document.getElementById('form-booking')?.addEventListener('submit', async (e) =>
   if (!availability.ok) {
     toast(availability.message, 'error');
     return;
+  }
+
+  const driverId = document.getElementById('booking-driver').value;
+  if (driverId) {
+    const driverAvail = await validateDriverAvailability(driverId, start, end, id || null);
+    if (!driverAvail.ok) {
+      toast(driverAvail.message, 'error');
+      return;
+    }
   }
 
   const payload = {
@@ -574,9 +605,11 @@ async function loadBookingsArchive() {
   if (to) rows = rows.filter(b => b.end_date <= to);
   tbody.innerHTML = rows.map((b) => {
     const docs = Array.isArray(b.booking_documents) ? b.booking_documents : [];
-    const receiptHtml = b.receipt_number
-      ? `<span style="color:var(--green);font-weight:700;font-size:.78rem">✓ ${b.receipt_number}</span>`
-      : `<span style="color:var(--orange);font-size:.78rem">Unpaid</span>`;
+    const receiptHtml = b.payment_status === 'paid' || b.receipt_number
+      ? `<span style="color:var(--green);font-weight:700;font-size:.78rem">✓ ${b.receipt_number || 'Paid'}</span>`
+      : b.payment_status === 'partially_paid'
+      ? `<span style="color:var(--amber);font-weight:700;font-size:.78rem">◑ Partial</span>`
+      : `<span style="color:var(--orange);font-size:.78rem">✗ Unpaid</span>`;
     const alertBtn = !b.maintenance_alert_sent && b.status !== 'cancelled'
       ? `<button class="btn btn-sm" style="background:var(--orange);color:#fff;margin-top:4px" title="Send vehicle return/maintenance alert email" onclick="sendMaintenanceAlertForBooking('${b.id}')">🔔 Alert</button>`
       : b.maintenance_alert_sent ? `<span style="font-size:.73rem;color:var(--green)">✓ Alerted</span>` : '';
@@ -1396,6 +1429,337 @@ async function loadReports() {
   }).join('');
 }
 
+// ── ADMIN INSPECTION SHEET ────────────────────────────────────
+
+const ADMIN_CHECKLIST = {
+  'Documents & Compliance': [
+    'Tourism Permit','Passenger Liability Insurance','RC1 (NATIS Document)',
+    'Cross Border Permit','Licence Disc Valid'
+  ],
+  'Engine Compartment': [
+    'Engine Oil Level','Coolant Level','Brake Fluid',
+    'Fan Belts / Tension','Battery Terminals','Leakages (Oil/Water)'
+  ],
+  'External & Exterior': [
+    'Tyre Tread & Pressure','Wheel Nuts Secured','Spare Wheel & Tools',
+    'Windscreen & Wipers','Mirrors & Glass','Headlights (High/Low)',
+    'Brake & Tail Lights','Indicators (Front/Rear)','Reverse & Plate Lights',
+    'Reflectors & Tape','MUD GUARDS','TOW BAR'
+  ],
+  'Internal / Cab': [
+    'Horn & Gauges','Seatbelts / Seats','Air Conditioner / Demister',
+    'Steering Play','Footbrake / Handbrake','Interior Cleanliness','Dash Camera'
+  ],
+  'Safety Gear & Tools': [
+    'Fire Extinguisher','Triangle & First Aid','Safety Vest',
+    'Spare Wheel + Rim','Jack & Jack Handle','Wheel Spanner',
+    'Medic Kit-Green Bag','Roadside Kit - Blue Case'
+  ],
+  'Communication & Tech': [
+    'Headset','PA System','Microphone','Key with Key Ring'
+  ]
+};
+
+let adminChecklistState = {};
+let adminInspMediaFiles = [];
+
+function buildAdminChecklist() {
+  const container = document.getElementById('admin-checklist-container');
+  if (!container) return;
+  adminChecklistState = {};
+  container.innerHTML = '';
+
+  Object.entries(ADMIN_CHECKLIST).forEach(([section, items]) => {
+    const sec = document.createElement('div');
+    sec.className = 'checklist-section';
+    sec.innerHTML = `<div class="checklist-section-title">${section}</div>`;
+    items.forEach((item) => {
+      adminChecklistState[item] = null;
+      const row = document.createElement('div');
+      row.className = 'checklist-item';
+      row.innerHTML = `
+        <div class="checklist-label">${item}</div>
+        <div class="checklist-buttons">
+          <button type="button" class="chk-btn" data-item="${item}" data-value="ok">OK</button>
+          <button type="button" class="chk-btn" data-item="${item}" data-value="fault">Fault</button>
+        </div>`;
+      sec.appendChild(row);
+    });
+    container.appendChild(sec);
+  });
+
+  container.onclick = (e) => {
+    const btn = e.target.closest('.chk-btn');
+    if (!btn) return;
+    const item  = btn.dataset.item;
+    const value = btn.dataset.value;
+    adminChecklistState[item] = value;
+    btn.closest('.checklist-item').querySelectorAll('.chk-btn').forEach((b) => {
+      b.classList.toggle('ok',    b.dataset.value === 'ok'    && value === 'ok');
+      b.classList.toggle('fault', b.dataset.value === 'fault' && value === 'fault');
+    });
+    updateAdminFaultSummary();
+  };
+}
+
+function updateAdminFaultSummary() {
+  const faults = Object.entries(adminChecklistState).filter(([, v]) => v === 'fault').map(([k]) => k);
+  const el = document.getElementById('admin-fault-summary');
+  if (!el) return;
+  el.innerHTML = faults.length > 0
+    ? `<div class="fault-alert"><div class="fault-icon">⚠</div><div class="fault-text"><strong>${faults.length} fault(s) marked:</strong><br><span style="font-size:.82rem">${escapeHtml(faults.join(' · '))}</span></div></div>`
+    : '';
+}
+
+async function loadAdminInspections() {
+  const container = document.getElementById('admin-inspections-list');
+  if (!container) return;
+  container.innerHTML = '<div class="spinner"></div>';
+
+  const vehicleFilter = (document.getElementById('insp-filter-vehicle')?.value || '').trim().toUpperCase();
+  const dateFilter    = document.getElementById('insp-filter-date')?.value || '';
+  const faultFilter   = document.getElementById('insp-filter-faults')?.checked || false;
+
+  let query = sb.from('inspections')
+    .select('*, profiles!inspections_driver_id_fkey(name)')
+    .order('created_at', { ascending: false })
+    .limit(100);
+
+  if (vehicleFilter) query = query.ilike('vehicle_reg', `%${vehicleFilter}%`);
+  if (dateFilter)    query = query.gte('created_at', dateFilter).lte('created_at', `${dateFilter}T23:59:59`);
+  if (faultFilter)   query = query.eq('has_critical_fault', true);
+
+  const { data, error } = await query;
+
+  if (error) {
+    container.innerHTML = `<p style="color:var(--red)">${escapeHtml(error.message)}</p>`;
+    return;
+  }
+  if (!data?.length) {
+    container.innerHTML = `<div class="empty-state"><div class="empty-icon">🔍</div><p>No inspections found.</p></div>`;
+    return;
+  }
+
+  container.innerHTML = data.map((insp) => {
+    const faults = insp.faults_json || [];
+    const media  = insp.media_urls  || [];
+    return `
+      <div class="inspection-item" onclick="openReportDetail('${insp.id}')">
+        <div style="flex:1;min-width:0">
+          <div class="inspection-title">${escapeHtml(insp.vehicle_reg)} — ${escapeHtml(insp.inspection_type)}</div>
+          <div class="inspection-meta">
+            ${escapeHtml(insp.profiles?.name || insp.driver_id || '—')} ·
+            ${formatDateTime(insp.created_at)} · ${media.length} photo(s)
+            ${insp.invoice_no ? ' · <span style="color:var(--navy)">' + escapeHtml(insp.invoice_no) + '</span>' : ''}
+          </div>
+          ${insp.is_rented_vehicle ? `<span class="badge badge-amber" style="font-size:.7rem">🚗 Rented</span> ` : ''}
+          ${faults.length > 0
+            ? `<div class="inspection-fault-count">⚠ ${faults.length} fault(s)</div>`
+            : '<div style="color:var(--green);font-size:.78rem;margin-top:3px">✓ No faults</div>'}
+        </div>
+        <button class="btn btn-sm btn-amber"
+          onclick="event.stopPropagation();downloadPDF('${insp.id}')">PDF</button>
+      </div>`;
+  }).join('');
+}
+window.loadAdminInspections = loadAdminInspections;
+
+async function openAdminInspectionModal(bookingId = null) {
+  adminChecklistState = {};
+  adminInspMediaFiles = [];
+
+  const form = document.getElementById('form-admin-inspection');
+  if (form) form.reset();
+  const preview = document.getElementById('admin-insp-media-preview');
+  if (preview) preview.innerHTML = '';
+  const faultSummary = document.getElementById('admin-fault-summary');
+  if (faultSummary) faultSummary.innerHTML = '';
+  const invoiceEl = document.getElementById('admin-insp-invoice');
+  if (invoiceEl) invoiceEl.value = '';
+
+  // Populate booking dropdown
+  const bookingSel = document.getElementById('admin-insp-booking');
+  if (bookingSel) {
+    const { data: bookings } = await sb.from('bookings')
+      .select('id,invoice_no,client_name,assigned_vehicle_reg,assigned_driver_id,is_rented_vehicle,rented_vehicle_reg')
+      .not('status', 'eq', 'cancelled')
+      .order('start_date', { ascending: false })
+      .limit(150);
+    bookingSel.innerHTML = '<option value="">— No booking link —</option>';
+    (bookings || []).forEach((b) => {
+      const opt = document.createElement('option');
+      opt.value             = b.id;
+      opt.dataset.vehicleReg = b.is_rented_vehicle ? (b.rented_vehicle_reg || '') : (b.assigned_vehicle_reg || '');
+      opt.dataset.driverId  = b.assigned_driver_id || '';
+      opt.dataset.invoiceNo = b.invoice_no;
+      opt.textContent = `${b.invoice_no} — ${b.client_name}`;
+      bookingSel.appendChild(opt);
+    });
+    if (bookingId) {
+      bookingSel.value = bookingId;
+      _adminInspFillFromBookingSel(bookingSel);
+    }
+    bookingSel.onchange = () => _adminInspFillFromBookingSel(bookingSel);
+  }
+
+  // Populate fleet vehicle dropdown
+  const vehicleSel = document.getElementById('admin-insp-vehicle');
+  if (vehicleSel) {
+    const { data: fleet } = await sb.from('vehicles')
+      .select('registration_no,make,model').eq('status', 'active').order('registration_no');
+    vehicleSel.innerHTML = '<option value="">— Select fleet vehicle —</option>';
+    (fleet || []).forEach((v) => {
+      const opt = document.createElement('option');
+      opt.value = v.registration_no;
+      opt.textContent = `${v.registration_no} (${[v.make, v.model].filter(Boolean).join(' ')})`;
+      vehicleSel.appendChild(opt);
+    });
+  }
+
+  buildAdminChecklist();
+
+  const photoInput = document.getElementById('admin-insp-photos');
+  if (photoInput) {
+    photoInput.onchange = (e) => {
+      const prev = document.getElementById('admin-insp-media-preview');
+      Array.from(e.target.files).forEach((file) => {
+        adminInspMediaFiles.push(file);
+        const img = document.createElement('img');
+        img.src = URL.createObjectURL(file);
+        img.style.cssText = 'width:80px;height:60px;object-fit:cover;border-radius:8px;border:1px solid var(--border);margin:4px';
+        prev.appendChild(img);
+      });
+    };
+  }
+
+  openModal('modal-admin-inspection');
+}
+window.openAdminInspectionModal = openAdminInspectionModal;
+
+function _adminInspFillFromBookingSel(sel) {
+  const opt = sel.options[sel.selectedIndex];
+  if (!opt || !opt.value) return;
+  const invoiceEl  = document.getElementById('admin-insp-invoice');
+  const vehicleSel = document.getElementById('admin-insp-vehicle');
+  const manualEl   = document.getElementById('admin-insp-vehicle-manual');
+  if (invoiceEl) invoiceEl.value = opt.dataset.invoiceNo || '';
+  const reg = opt.dataset.vehicleReg || '';
+  if (reg && vehicleSel) {
+    const match = Array.from(vehicleSel.options).find(o => o.value === reg);
+    if (match) { vehicleSel.value = reg; }
+    else if (manualEl) { manualEl.value = reg; }
+  }
+}
+
+function openAdminInspectionFromBooking() {
+  const id = document.getElementById('booking-id').value;
+  closeModal('modal-booking');
+  openAdminInspectionModal(id || null);
+}
+window.openAdminInspectionFromBooking = openAdminInspectionFromBooking;
+
+async function adminTriggerFaultAlert({ vehicleReg, driverId, faults, inspectionId }) {
+  try {
+    const { data, error } = await sb.functions.invoke('fault-alert', {
+      body: { vehicle_reg: vehicleReg, driver_id: driverId, faults, inspection_id: inspectionId ?? null }
+    });
+    if (error) console.error('[admin fault-alert]', error.message);
+    else       console.log('[admin fault-alert] success:', data);
+  } catch (err) {
+    console.error('[admin fault-alert] failed:', err?.message);
+  }
+}
+
+async function submitAdminInspection() {
+  const vehicleSel    = document.getElementById('admin-insp-vehicle');
+  const vehicleManual = document.getElementById('admin-insp-vehicle-manual');
+  const vehicleReg    = (vehicleSel?.value || vehicleManual?.value || '').trim().toUpperCase();
+
+  if (!vehicleReg) { toast('Please select or enter a vehicle registration', 'error'); return; }
+  const inspType = document.getElementById('admin-insp-type')?.value;
+  if (!inspType)  { toast('Please select an inspection type', 'error'); return; }
+
+  const mileage   = parseInt(document.getElementById('admin-insp-mileage')?.value) || null;
+  const notes     = document.getElementById('admin-insp-notes')?.value.trim() || null;
+  const invoiceNo = document.getElementById('admin-insp-invoice')?.value.trim() || null;
+
+  const total   = Object.keys(adminChecklistState).length;
+  const checked = Object.values(adminChecklistState).filter(v => v !== null).length;
+  if (checked < total && !confirm(`${total - checked} checklist item(s) not marked. Submit anyway?`)) return;
+
+  const faults           = Object.entries(adminChecklistState).filter(([, v]) => v === 'fault').map(([k]) => k);
+  const hasCriticalFault = faults.length > 0;
+
+  const btn = document.getElementById('btn-submit-admin-inspection');
+  if (btn) { btn.disabled = true; btn.textContent = 'Submitting…'; }
+
+  try {
+    const uploadedMedia = [];
+    if (adminInspMediaFiles.length) {
+      toast('Uploading inspection photos…', 'info');
+      for (const file of adminInspMediaFiles) {
+        uploadedMedia.push(await uploadToCloudinary(file, 'inspections'));
+      }
+    }
+
+    const bookingSel = document.getElementById('admin-insp-booking');
+    const bookingOpt = bookingSel?.options[bookingSel?.selectedIndex];
+    const driverId   = bookingOpt?.dataset?.driverId || null;
+    const bookingId  = bookingSel?.value || null;
+    const isRented   = !!(vehicleSel && !vehicleSel.value && vehicleManual?.value);
+
+    const payload = {
+      vehicle_reg:           vehicleReg,
+      is_rented_vehicle:     isRented,
+      invoice_no:            invoiceNo,
+      driver_id:             driverId,
+      inspection_type:       inspType,
+      checklist_json:        adminChecklistState,
+      faults_json:           faults,
+      mileage_at_inspection: mileage,
+      notes,
+      has_critical_fault:    hasCriticalFault,
+      driver_signature:      null,
+      client_signature:      null,
+      submitted_at:          new Date().toISOString(),
+      media_urls:            uploadedMedia,
+      pdf_urls:              [],
+    };
+
+    const { data: inserted, error } = await sb.from('inspections').insert(payload).select().single();
+    if (error) throw error;
+
+    // Link pre/post-trip inspection to booking
+    if (bookingId && inserted?.id) {
+      const field = inspType === 'pre-trip'  ? 'pre_trip_inspection_id'
+                  : inspType === 'post-trip' ? 'post_trip_inspection_id'
+                  : null;
+      if (field) await sb.from('bookings').update({ [field]: inserted.id }).eq('id', bookingId);
+    }
+
+    if (hasCriticalFault) {
+      await adminTriggerFaultAlert({
+        vehicleReg,
+        driverId: driverId || currentProfile?.id,
+        faults,
+        inspectionId: inserted?.id ?? null,
+      });
+      toast(`⚠ Inspection saved — ${faults.length} fault(s) detected, alert sent`, 'warning', 6000);
+    } else {
+      toast('Inspection submitted successfully', 'success');
+    }
+
+    closeModal('modal-admin-inspection');
+    loadAdminInspections();
+    loadReports();
+  } catch (err) {
+    toast('Submission failed: ' + err.message, 'error');
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = 'Submit Inspection'; }
+  }
+}
+window.submitAdminInspection = submitAdminInspection;
+
 // ── RECON REVIEW ──────────────────────────────────────────────
 async function loadReconReview() {
   const container = document.getElementById('recon-list');
@@ -1721,6 +2085,26 @@ async function validateVehicleAvailability(vehicleReg,startDate,endDate,excludeB
   const {data,error}=await q; if(error) return {ok:false,message:error.message};
   if((data||[]).length) return {ok:false,message:`Vehicle already booked (${data[0].invoice_no}) for overlapping dates.`};
   return {ok:true};
+}
+async function validateDriverAvailability(driverId, startDate, endDate, excludeBookingId = null) {
+  if (!driverId || !startDate || !endDate) return { ok: true };
+  let q = sb.from('bookings')
+    .select('id,invoice_no,start_date,end_date,client_name')
+    .eq('assigned_driver_id', driverId)
+    .neq('status', 'cancelled')
+    .lte('start_date', endDate)
+    .gte('end_date', startDate);
+  if (excludeBookingId) q = q.neq('id', excludeBookingId);
+  const { data, error } = await q;
+  if (error) return { ok: false, message: error.message };
+  if ((data || []).length) {
+    const conflict = data[0];
+    return {
+      ok: false,
+      message: `Driver already assigned to booking ${conflict.invoice_no} (${conflict.client_name}) for overlapping dates (${formatDate(conflict.start_date)} → ${formatDate(conflict.end_date)}).`
+    };
+  }
+  return { ok: true };
 }
 async function validateBookingCompletion(bookingId){
  const {data,error}=await sb.from('bookings').select('payment_status,pre_trip_inspection_id,post_trip_inspection_id').eq('id',bookingId).single();
