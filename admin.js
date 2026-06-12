@@ -210,7 +210,7 @@ async function renderCalendar() {
       markers.className = 'booking-markers';
       const MAX_DOTS = 5;
       dayBookings.slice(0, MAX_DOTS).forEach((b) => {
-        const dot = document.createElement('span');
+        const dot = document.createElement('div');
         dot.className = 'booking-marker';
         const reg = b.is_rented_vehicle ? (b.rented_vehicle_reg || null) : b.assigned_vehicle_reg;
         dot.style.background = getVehicleColor(reg);
