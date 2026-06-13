@@ -75,6 +75,16 @@ document.querySelectorAll('.tab-btn').forEach((btn) => {
 // ── CALENDAR ──────────────────────────────────────────────────
 let calDate       = new Date();
 let allBookings   = [];
+
+const CAL_PALETTE     = ['#2563eb','#16a34a','#dc2626','#f59e0b','#7c3aed','#0891b2','#ea580c','#be185d'];
+const vehicleColorMap = {};
+function getVehicleColor(reg) {
+  if (!reg) return '#94a3b8';
+  if (!vehicleColorMap[reg]) {
+    vehicleColorMap[reg] = CAL_PALETTE[Object.keys(vehicleColorMap).length % CAL_PALETTE.length];
+  }
+  return vehicleColorMap[reg];
+}
 let driverOptions = [];
 let currentBookingDocuments = [];
 const ALLOWED_DOC_TYPES = ['application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'];
@@ -142,19 +152,10 @@ async function renderCalendar() {
   ]);
   allBookings = bookingData || [];
 
-  // ── Vehicle colour map ──────────────────────────────────────
-  const CAL_PALETTE = ['#2563eb','#16a34a','#dc2626','#f59e0b','#7c3aed','#0891b2','#ea580c','#be185d'];
-  const vehicleColorMap = {};
+  // ── Vehicle colour map (module-level map, updated here each render) ──
   (vehicleResult.data || []).forEach((v) => {
     if (v.calendar_color) vehicleColorMap[v.registration_no] = v.calendar_color;
   });
-  function getVehicleColor(reg) {
-    if (!reg) return '#94a3b8';
-    if (!vehicleColorMap[reg]) {
-      vehicleColorMap[reg] = CAL_PALETTE[Object.keys(vehicleColorMap).length % CAL_PALETTE.length];
-    }
-    return vehicleColorMap[reg];
-  }
 
   // ── Build calendar map: dateStr → [bookings] ───────────────
   // Parse "YYYY-MM-DD" as a local-time date to avoid UTC-offset drift
