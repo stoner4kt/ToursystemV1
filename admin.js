@@ -202,34 +202,144 @@ async function renderCalendar() {
     dayNum.textContent = d;
     el.appendChild(dayNum);
 
-    // Vehicle-coloured booking markers
+    // Mark day as having bookings (keeps has-booking class logic intact)
     const dayBookings = calendarMap[dateStr] || [];
     if (dayBookings.length > 0) {
       el.classList.add('has-booking');
-      const markers = document.createElement('div');
-      markers.className = 'booking-markers';
-      const MAX_DOTS = 5;
-      dayBookings.slice(0, MAX_DOTS).forEach((b) => {
-        const dot = document.createElement('div');
-        dot.className = 'booking-marker';
-        const reg = b.is_rented_vehicle ? (b.rented_vehicle_reg || null) : b.assigned_vehicle_reg;
-        dot.style.background = getVehicleColor(reg);
-        dot.title = `${b.client_name} (${reg || 'No vehicle'})`;
-        markers.appendChild(dot);
-      });
-      if (dayBookings.length > MAX_DOTS) {
-        const more = document.createElement('span');
-        more.className = 'booking-marker-more';
-        more.textContent = `+${dayBookings.length - MAX_DOTS}`;
-        markers.appendChild(more);
-      }
-      el.appendChild(markers);
     }
 
     el.addEventListener('click', () => showBookingsForDate(dateStr, el));
     grid.appendChild(el);
   }
   loadCalendarStats();
+  requestAnimationFrame(() => renderBookingBars());
+}
+
+function renderBookingBars() {
+  const wrapper = document.getElementById('cal-grid-wrapper');
+  if (!wrapper) return;
+
+  // Remove any previously rendered bars
+  wrapper.querySelectorAll('.cal-booking-bar').forEach(el => el.remove());
+
+  const grid = document.getElementById('cal-grid');
+  const cells = Array.from(grid.querySelectorAll('.cal-day'));
+  if (!cells.length) return;
+
+  const year = calDate.getFullYear();
+  const month = calDate.getMonth();
+  const firstDay = new Date(year, month, 1).getDay();
+  const lastDay = new Date(year, month + 1, 0).getDate();
+
+  function cellIndex(d) {
+    return firstDay + d - 1;
+  }
+
+  function dateToIndex(dateStr) {
+    const [y, m, d] = dateStr.split('-').map(Number);
+    if (y !== year || m - 1 !== month) return null;
+    if (d < 1 || d > lastDay) return null;
+    return cellIndex(d);
+  }
+
+  function parseDateLocal(str) {
+    const [y, m, d] = str.split('-').map(Number);
+    return new Date(y, m - 1, d);
+  }
+
+  const monthStart = new Date(year, month, 1);
+  const monthEnd = new Date(year, month + 1, 0);
+
+  // Track vertical offset per cell so multiple bookings stack
+  const cellOffsets = {};
+
+  // Sort bookings by start date so overlapping bookings stack consistently
+  const sorted = [...allBookings].sort((a, b) =>
+    a.start_date.localeCompare(b.start_date)
+  );
+
+  const BAR_HEIGHT = 5;
+  const BAR_GAP = 2;
+  const TOP_OFFSET = 22;
+
+  sorted.forEach(b => {
+    const bStart = parseDateLocal(b.start_date);
+    const bEnd = parseDateLocal(b.end_date);
+
+    // Clamp to visible month
+    const visStart = new Date(Math.max(bStart.getTime(), monthStart.getTime()));
+    const visEnd = new Date(Math.min(bEnd.getTime(), monthEnd.getTime()));
+
+    if (visStart > visEnd) return;
+
+    const reg = b.is_rented_vehicle ? (b.rented_vehicle_reg || null) : b.assigned_vehicle_reg;
+    const color = getVehicleColor(reg);
+
+    // Break into per-row segments (new row starts every Sunday)
+    let cursor = new Date(visStart);
+
+    while (cursor <= visEnd) {
+      const dayOfWeek = cursor.getDay();
+      const daysUntilSat = 6 - dayOfWeek;
+      const segEnd = new Date(Math.min(
+        visEnd.getTime(),
+        new Date(cursor.getFullYear(), cursor.getMonth(), cursor.getDate() + daysUntilSat).getTime()
+      ));
+
+      const segStartStr = `${cursor.getFullYear()}-${String(cursor.getMonth()+1).padStart(2,'0')}-${String(cursor.getDate()).padStart(2,'0')}`;
+      const segEndStr = `${segEnd.getFullYear()}-${String(segEnd.getMonth()+1).padStart(2,'0')}-${String(segEnd.getDate()).padStart(2,'0')}`;
+
+      const startIdx = dateToIndex(segStartStr);
+      const endIdx = dateToIndex(segEndStr);
+
+      if (startIdx !== null && endIdx !== null &&
+          startIdx < cells.length && endIdx < cells.length) {
+
+        const startCell = cells[startIdx];
+        const endCell = cells[endIdx];
+
+        if (startCell && endCell) {
+          const wrapperRect = wrapper.getBoundingClientRect();
+          const startRect = startCell.getBoundingClientRect();
+          const endRect = endCell.getBoundingClientRect();
+
+          const left = startRect.left - wrapperRect.left + 2;
+          const width = (endRect.right - wrapperRect.left - 2) - left;
+
+          // Determine stack slot: use the max offset of all cells in range
+          let slot = 0;
+          for (let i = startIdx; i <= endIdx; i++) {
+            slot = Math.max(slot, cellOffsets[i] || 0);
+          }
+          for (let i = startIdx; i <= endIdx; i++) {
+            cellOffsets[i] = slot + 1;
+          }
+
+          const top = TOP_OFFSET + slot * (BAR_HEIGHT + BAR_GAP);
+
+          const isStart = segStartStr === b.start_date || parseDateLocal(b.start_date) <= monthStart;
+          const isEnd = segEndStr === b.end_date || parseDateLocal(b.end_date) >= monthEnd;
+
+          const bar = document.createElement('div');
+          bar.className = 'cal-booking-bar' +
+            (isStart && isEnd ? ' bar-solo' :
+             isStart          ? ' bar-start' :
+             isEnd            ? ' bar-end' : '');
+          bar.style.cssText = `left:${left}px;top:${top}px;width:${width}px;background:${color};`;
+          bar.title = `${b.client_name} (${reg || 'No vehicle'})`;
+          bar.addEventListener('click', () => {
+            showBookingsForDate(segStartStr, startCell);
+          });
+
+          wrapper.appendChild(bar);
+        }
+      }
+
+      // Advance cursor to next day after segment end
+      cursor = new Date(segEnd);
+      cursor.setDate(cursor.getDate() + 1);
+    }
+  });
 }
 
 // ── PAYMENT STATUS HELPERS ────────────────────────────────────
@@ -2968,3 +3078,9 @@ async function loadAdminTrafficFines() {
 window.loadAdminTrafficFines = loadAdminTrafficFines;
 document.getElementById('fine-lookup-form')?.addEventListener('submit', lookupDriverByFineTimeDashboard);
 document.getElementById('fine-log-form')?.addEventListener('submit', submitTrafficFine);
+
+window.addEventListener('resize', () => {
+  if (document.getElementById('tab-calendar')?.classList.contains('active')) {
+    requestAnimationFrame(() => renderBookingBars());
+  }
+});
