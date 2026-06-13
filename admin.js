@@ -75,6 +75,16 @@ document.querySelectorAll('.tab-btn').forEach((btn) => {
 // ── CALENDAR ──────────────────────────────────────────────────
 let calDate       = new Date();
 let allBookings   = [];
+
+const CAL_PALETTE     = ['#2563eb','#16a34a','#dc2626','#f59e0b','#7c3aed','#0891b2','#ea580c','#be185d'];
+const vehicleColorMap = {};
+function getVehicleColor(reg) {
+  if (!reg) return '#94a3b8';
+  if (!vehicleColorMap[reg]) {
+    vehicleColorMap[reg] = CAL_PALETTE[Object.keys(vehicleColorMap).length % CAL_PALETTE.length];
+  }
+  return vehicleColorMap[reg];
+}
 let driverOptions = [];
 let currentBookingDocuments = [];
 const ALLOWED_DOC_TYPES = ['application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'];
@@ -142,19 +152,10 @@ async function renderCalendar() {
   ]);
   allBookings = bookingData || [];
 
-  // ── Vehicle colour map ──────────────────────────────────────
-  const CAL_PALETTE = ['#2563eb','#16a34a','#dc2626','#f59e0b','#7c3aed','#0891b2','#ea580c','#be185d'];
-  const vehicleColorMap = {};
+  // ── Vehicle colour map (module-level map, updated here each render) ──
   (vehicleResult.data || []).forEach((v) => {
     if (v.calendar_color) vehicleColorMap[v.registration_no] = v.calendar_color;
   });
-  function getVehicleColor(reg) {
-    if (!reg) return '#94a3b8';
-    if (!vehicleColorMap[reg]) {
-      vehicleColorMap[reg] = CAL_PALETTE[Object.keys(vehicleColorMap).length % CAL_PALETTE.length];
-    }
-    return vehicleColorMap[reg];
-  }
 
   // ── Build calendar map: dateStr → [bookings] ───────────────
   // Parse "YYYY-MM-DD" as a local-time date to avoid UTC-offset drift
@@ -202,34 +203,124 @@ async function renderCalendar() {
     dayNum.textContent = d;
     el.appendChild(dayNum);
 
-    // Vehicle-coloured booking markers
+    // Mark day as having bookings (keeps has-booking class logic intact)
     const dayBookings = calendarMap[dateStr] || [];
-    if (dayBookings.length > 0) {
-      el.classList.add('has-booking');
-      const markers = document.createElement('div');
-      markers.className = 'booking-markers';
-      const MAX_DOTS = 5;
-      dayBookings.slice(0, MAX_DOTS).forEach((b) => {
-        const dot = document.createElement('div');
-        dot.className = 'booking-marker';
-        const reg = b.is_rented_vehicle ? (b.rented_vehicle_reg || null) : b.assigned_vehicle_reg;
-        dot.style.background = getVehicleColor(reg);
-        dot.title = `${b.client_name} (${reg || 'No vehicle'})`;
-        markers.appendChild(dot);
-      });
-      if (dayBookings.length > MAX_DOTS) {
-        const more = document.createElement('span');
-        more.className = 'booking-marker-more';
-        more.textContent = `+${dayBookings.length - MAX_DOTS}`;
-        markers.appendChild(more);
-      }
-      el.appendChild(markers);
-    }
+    if (dayBookings.length > 0) el.classList.add('has-booking');
 
     el.addEventListener('click', () => showBookingsForDate(dateStr, el));
     grid.appendChild(el);
   }
   loadCalendarStats();
+  requestAnimationFrame(() => renderBookingBars());
+}
+
+function renderBookingBars() {
+  const wrapper = document.getElementById('cal-grid-wrapper');
+  if (!wrapper) return;
+
+  wrapper.querySelectorAll('.cal-booking-bar').forEach(el => el.remove());
+
+  const grid = document.getElementById('cal-grid');
+  const cells = Array.from(grid.querySelectorAll('.cal-day'));
+  if (!cells.length) return;
+
+  // If wrapper has no width the tab is hidden — skip silently
+  const wrapperRect = wrapper.getBoundingClientRect();
+  if (!wrapperRect.width) return;
+
+  const year     = calDate.getFullYear();
+  const month    = calDate.getMonth();
+  const firstDay = new Date(year, month, 1).getDay();
+  const lastDay  = new Date(year, month + 1, 0).getDate();
+
+  function cellIndex(d) { return firstDay + d - 1; }
+
+  function dateToIndex(str) {
+    const [y, m, d] = str.split('-').map(Number);
+    if (y !== year || m - 1 !== month || d < 1 || d > lastDay) return null;
+    return cellIndex(d);
+  }
+
+  function parseDateLocal(str) {
+    const [y, m, d] = str.split('-').map(Number);
+    return new Date(y, m - 1, d);
+  }
+
+  const monthStart = new Date(year, month, 1);
+  const monthEnd   = new Date(year, month + 1, 0);
+
+  // Match bar height to current responsive CSS breakpoint
+  const vw = wrapperRect.width;
+  const BAR_HEIGHT = vw >= 1025 ? 6 : vw <= 400 ? 4 : 5;
+  const BAR_GAP    = 2;
+  const TOP_OFFSET = 20; // px below the day number inside each cell
+
+  const cellOffsets = {};
+  const sorted = [...allBookings].sort((a, b) => a.start_date.localeCompare(b.start_date));
+
+  sorted.forEach(b => {
+    const bStart   = parseDateLocal(b.start_date);
+    const bEnd     = parseDateLocal(b.end_date);
+    const visStart = new Date(Math.max(bStart.getTime(), monthStart.getTime()));
+    const visEnd   = new Date(Math.min(bEnd.getTime(),   monthEnd.getTime()));
+    if (visStart > visEnd) return;
+
+    const reg   = b.is_rented_vehicle ? (b.rented_vehicle_reg || null) : b.assigned_vehicle_reg;
+    const color = getVehicleColor(reg);
+
+    let cursor = new Date(visStart);
+    const pad  = n => String(n).padStart(2, '0');
+
+    while (cursor <= visEnd) {
+      const daysUntilSat = 6 - cursor.getDay();
+      const segEnd = new Date(Math.min(
+        visEnd.getTime(),
+        new Date(cursor.getFullYear(), cursor.getMonth(), cursor.getDate() + daysUntilSat).getTime()
+      ));
+
+      const segStartStr = `${cursor.getFullYear()}-${pad(cursor.getMonth()+1)}-${pad(cursor.getDate())}`;
+      const segEndStr   = `${segEnd.getFullYear()}-${pad(segEnd.getMonth()+1)}-${pad(segEnd.getDate())}`;
+
+      const startIdx = dateToIndex(segStartStr);
+      const endIdx   = dateToIndex(segEndStr);
+
+      if (startIdx !== null && endIdx !== null && startIdx < cells.length && endIdx < cells.length) {
+        const startCell = cells[startIdx];
+        const endCell   = cells[endIdx];
+
+        if (startCell && endCell) {
+          const startRect = startCell.getBoundingClientRect();
+          const endRect   = endCell.getBoundingClientRect();
+
+          const left  = startRect.left - wrapperRect.left + 2;
+          const width = (endRect.right - wrapperRect.left - 2) - left;
+
+          // Determine stack slot across all cells in this segment
+          let slot = 0;
+          for (let i = startIdx; i <= endIdx; i++) slot = Math.max(slot, cellOffsets[i] || 0);
+          for (let i = startIdx; i <= endIdx; i++) cellOffsets[i] = slot + 1;
+
+          // top is relative to the wrapper — use the cell's actual Y offset
+          const top = (startRect.top - wrapperRect.top) + TOP_OFFSET + slot * (BAR_HEIGHT + BAR_GAP);
+
+          const isStart = segStartStr === b.start_date || bStart <= monthStart;
+          const isEnd   = segEndStr   === b.end_date   || bEnd   >= monthEnd;
+
+          const bar = document.createElement('div');
+          bar.className = 'cal-booking-bar' +
+            (isStart && isEnd ? ' bar-solo' : isStart ? ' bar-start' : isEnd ? ' bar-end' : '');
+          bar.style.cssText = `left:${left}px;top:${top}px;width:${width}px;background:${color};`;
+          bar.title = `${b.client_name} (${reg || 'No vehicle'})`;
+          bar.addEventListener('click', () => showBookingsForDate(segStartStr, startCell));
+
+          wrapper.appendChild(bar);
+        }
+      }
+
+      cursor = new Date(segEnd);
+      cursor.setDate(cursor.getDate() + 1);
+    }
+  });
 }
 
 // ── PAYMENT STATUS HELPERS ────────────────────────────────────
@@ -2968,3 +3059,10 @@ async function loadAdminTrafficFines() {
 window.loadAdminTrafficFines = loadAdminTrafficFines;
 document.getElementById('fine-lookup-form')?.addEventListener('submit', lookupDriverByFineTimeDashboard);
 document.getElementById('fine-log-form')?.addEventListener('submit', submitTrafficFine);
+
+window.addEventListener('resize', () => {
+  if (document.getElementById('tab-calendar')?.classList.contains('active')) {
+    requestAnimationFrame(() => renderBookingBars());
+  }
+});
+
