@@ -75,7 +75,7 @@ serve(async (req: Request) => {
 
     if (insertError) throw new Error(`DB insert failed: ${insertError.message}`);
 
-    const adminEmail = Deno.env.get('ADMIN_EMAIL') ?? 'info@inyathi.co.za';
+    const adminEmail = Deno.env.get('ADMIN_EMAIL') ?? 'info@inyathitours.com';
     const resendKey  = Deno.env.get('RESEND_API_KEY') ?? '';
 
     if (!resendKey) {
@@ -91,7 +91,7 @@ serve(async (req: Request) => {
       method: 'POST',
       headers: { Authorization: `Bearer ${resendKey}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        from: `INYATHI Fleet <noreply@inyathi.co.za>`,
+        from: `INYATHI Fleet <noreply@inyathitours.com>`,
         to: [adminEmail],
         subject: `🔐 INYATHI OTP Code — ${label}`,
         html: `

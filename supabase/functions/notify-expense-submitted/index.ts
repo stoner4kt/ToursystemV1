@@ -41,7 +41,7 @@ serve(async (req: Request) => {
     }
 
     const resendKey  = Deno.env.get('RESEND_API_KEY') ?? '';
-    const adminEmail = Deno.env.get('ADMIN_EMAIL') ?? 'info@inyathi.co.za';
+    const adminEmail = Deno.env.get('ADMIN_EMAIL') ?? 'info@inyathitours.com';
 
     if (!resendKey) {
       console.warn('RESEND_API_KEY not set — expense alert not emailed.');
@@ -82,7 +82,7 @@ serve(async (req: Request) => {
       method: 'POST',
       headers: { Authorization: `Bearer ${resendKey}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        from: 'INYATHI Fleet <noreply@inyathi.co.za>',
+        from: 'INYATHI Fleet <noreply@inyathitours.com>',
         to: [adminEmail],
         subject,
         html,
