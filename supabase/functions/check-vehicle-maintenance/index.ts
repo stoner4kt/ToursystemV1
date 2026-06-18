@@ -17,7 +17,7 @@ serve(async (req: Request) => {
     );
 
     const resendKey  = Deno.env.get('RESEND_API_KEY') ?? '';
-    const adminEmail = Deno.env.get('ADMIN_EMAIL') ?? 'info@inyathi.co.za';
+    const adminEmail = Deno.env.get('ADMIN_EMAIL') ?? 'info@inyathitours.com';
 
     // Target: bookings ending in exactly 2 days, alert not yet sent, not cancelled
     const targetDate = new Date();
@@ -90,7 +90,7 @@ serve(async (req: Request) => {
           const emailRes = await fetch('https://api.resend.com/emails', {
             method: 'POST',
             headers: { Authorization: `Bearer ${resendKey}`, 'Content-Type': 'application/json' },
-            body: JSON.stringify({ from: 'INYATHI Fleet <noreply@inyathi.co.za>', to: [adminEmail], subject, html }),
+            body: JSON.stringify({ from: 'INYATHI Fleet <noreply@inyathitours.com>', to: [adminEmail], subject, html }),
           });
           if (!emailRes.ok) {
             const errText = await emailRes.text();
