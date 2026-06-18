@@ -382,7 +382,7 @@
 
       <div class="card-title" style="font-size:.9rem;margin-bottom:10px">Transfer Entries</div>
 
-      <div style="overflow-x:auto">
+      <div id="tr-table-wrapper" style="overflow-x:auto;-webkit-overflow-scrolling:touch;margin-bottom:4px">
         <table id="tr-table" style="width:100%;border-collapse:collapse;font-size:.82rem">
           <thead>
             <tr style="background:var(--navy);color:#fff">
@@ -421,6 +421,26 @@
 </main>
 
 <div id="toast-container"></div>
+
+<!-- Transfer Recon Edit Request Modal -->
+<div class="modal-overlay" id="modal-transfer-recon-edit-request">
+  <div class="modal">
+    <div class="modal-header">
+      <span class="modal-title">Request Transfer Recon Edit</span>
+      <button class="modal-close" onclick="closeModal('modal-transfer-recon-edit-request')">✕</button>
+    </div>
+    <input type="hidden" id="transfer-recon-edit-request-id">
+    <p style="font-size:.85rem;color:var(--text-muted);margin-bottom:14px;line-height:1.5">
+      Submitted transfer recon sheets are locked. Your edit request will be sent to the admin for OTP-verified approval.
+    </p>
+    <div class="form-group">
+      <label>Reason for Edit Request <span class="required">*</span></label>
+      <textarea id="transfer-recon-edit-reason" class="form-control" rows="3"
+        placeholder="Explain which transfers need to be corrected and why…" required></textarea>
+    </div>
+    <button class="btn btn-amber btn-full" onclick="submitTransferReconEditRequest()">Submit Request</button>
+  </div>
+</div>
 
 <!-- Recon Edit Request Modal (Feature 3) -->
 <div class="modal-overlay" id="modal-recon-edit-request">
