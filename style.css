@@ -266,10 +266,14 @@ select.form-control { cursor: pointer; }
   color: var(--text-muted); padding: 4px 0; text-transform: uppercase;
 }
 .cal-day {
-  aspect-ratio: 1;
-  display: flex; flex-direction: column; align-items: center; justify-content: center;
-  border-radius: 7px; font-size: .82rem; cursor: pointer;
-  position: relative; transition: background var(--transition);
+  min-height: 52px;
+  border-radius: 4px;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  padding: 4px 3px 3px;
+  cursor: pointer;
+  transition: background 0.15s;
 }
 .cal-day:hover { background: var(--bg); }
 .cal-day.other-month { color: var(--border); }
@@ -865,42 +869,43 @@ tbody tr:nth-child(even) { background: rgba(240,244,248,.5); }
 }
 
 /* ── CALENDAR BOOKING MARKERS ────────────────────────────────── */
-/* Override aspect-ratio so cells can grow tall enough for markers */
-.cal-day {
-  aspect-ratio: unset;
-  min-height: 58px;
-  justify-content: flex-start;
-  padding: 6px 2px 4px;
-}
+/* Override so cells grow tall enough for stacked stripes */
 .day-number {
-  width: 100%;
-  text-align: center;
-  font-size: .82rem;
+  position: relative;
+  z-index: 2;
+  font-size: 11px;
+  color: var(--text-muted);
   line-height: 1.2;
-  flex-shrink: 0;
+  margin-bottom: 2px;
 }
-/* Keep today / selected colours working on the wrapper */
-.cal-day.today .day-number  { color: inherit; }
-.cal-day.selected .day-number { color: inherit; }
-.booking-markers {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 2px;
-  justify-content: center;
-  padding-top: 4px;
-  width: 100%;
-}
-.booking-marker {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  flex-shrink: 0;
-  cursor: pointer;
-}
+.cal-day.today .day-number { color: #fff; }
+.cal-day.selected .day-number { color: var(--navy); }
 .booking-marker-more {
   font-size: .55rem;
   font-weight: 700;
   color: var(--text-muted);
   line-height: 8px;
   align-self: center;
+}
+/* ── CONTINUOUS BOOKING BARS ─────────────────────────────────── */
+.cal-booking-bar {
+  position: absolute;
+  height: 5px;
+  border-radius: 0;
+  pointer-events: auto;
+  cursor: pointer;
+  transition: opacity 0.15s ease;
+  z-index: 1;
+}
+.cal-booking-bar:hover { opacity: 0.75; }
+.cal-booking-bar.bar-start { border-radius: 3px 0 0 3px; }
+.cal-booking-bar.bar-end   { border-radius: 0 3px 3px 0; }
+.cal-booking-bar.bar-solo  { border-radius: 3px; }
+@media (max-width: 400px) {
+  .cal-booking-bar { height: 4px; }
+  .cal-day { min-height: 44px; }
+}
+@media (min-width: 1025px) {
+  .cal-booking-bar { height: 6px; }
+  .cal-day { min-height: 58px; }
 }
