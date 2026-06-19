@@ -7,36 +7,6 @@ const corsHeaders = {
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
 };
 
-type Recipient = { phone: string; apikey: string };
-
-function getRecipients(): Recipient[] {
-  const recipientsRaw = Deno.env.get('CALLMEBOT_RECIPIENTS') ?? '';
-
-  if (recipientsRaw.trim()) {
-    try {
-      const parsed = JSON.parse(recipientsRaw);
-      if (!Array.isArray(parsed)) {
-        console.warn('CALLMEBOT_RECIPIENTS is not an array.');
-      } else {
-        return parsed
-          .filter((r) => r && typeof r.phone !== 'undefined' && typeof r.apikey !== 'undefined')
-          .map((r) => ({ phone: String(r.phone), apikey: String(r.apikey) }))
-          .filter((r) => r.phone.trim() && r.apikey.trim());
-      }
-    } catch (error) {
-      console.warn('Invalid CALLMEBOT_RECIPIENTS JSON:', error);
-    }
-  }
-
-  const phone = Deno.env.get('CALLMEBOT_PHONE') ?? '';
-  const apikey = Deno.env.get('CALLMEBOT_APIKEY') ?? '';
-  if (phone.trim() && apikey.trim()) {
-    return [{ phone, apikey }];
-  }
-
-  return [];
-}
-
 serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
@@ -59,10 +29,16 @@ serve(async (req: Request) => {
       });
     }
 
-    const faultList = faults
-      .slice(0, 5)
-      .map((f: string, i: number) => `${i + 1}. ${f}`)
-      .join('\n');
+    const resendKey  = Deno.env.get('RESEND_API_KEY') ?? '';
+    const adminEmail = Deno.env.get('ADMIN_EMAIL') ?? 'info@inyathitours.com';
+
+    if (!resendKey) {
+      console.warn('RESEND_API_KEY not set — fault alert email not sent.');
+      return new Response(
+        JSON.stringify({ success: false, error: 'Email not configured' }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+      );
+    }
 
     const timestamp = new Date().toLocaleString('en-ZA', {
       timeZone: 'Africa/Johannesburg',
@@ -73,53 +49,64 @@ serve(async (req: Request) => {
       minute: '2-digit',
     });
 
-    const rawMessage =
-      `🚨 *CRITICAL FAULT ALERT — INYATHI*\n\n` +
-      `*Vehicle:* ${vehicle_reg}\n` +
-      `*Driver ID:* ${driver_id ?? 'N/A'}\n` +
-      `*Time:* ${timestamp}\n\n` +
-      `*Faults reported:*\n${faultList}\n\n` +
-      `*Inspection ID:* ${inspection_id ?? 'N/A'}\n\n` +
-      `_Action required: Vehicle must be inspected before next trip._`;
+    const faultRows = faults
+      .map((f: string, i: number) => `
+        <tr${i % 2 === 1 ? ' style="background:#f8fafc"' : ''}>
+          <td style="padding:8px 0;color:#64748b;width:40px">${i + 1}.</td>
+          <td style="padding:8px 0;color:#1e293b">${f}</td>
+        </tr>`)
+      .join('');
 
-    const message = encodeURIComponent(rawMessage);
-    const recipients = getRecipients();
+    const subject = `🚨 INYATHI Critical Fault Alert — ${vehicle_reg}`;
 
-    if (recipients.length === 0) {
-      return new Response(
-        JSON.stringify({ success: false, error: 'CallMeBot recipients are not configured' }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
-      );
+    const html = `
+      <div style="font-family:sans-serif;max-width:560px;margin:0 auto;padding:32px 24px">
+        <h2 style="color:#0f2744;margin-bottom:4px">INYATHI Fleet Management</h2>
+        <p style="color:#ef4444;font-weight:700;margin-top:0">🚨 Critical Fault Alert</p>
+        <hr style="border:none;border-top:1px solid #e2e8f0;margin:20px 0">
+        <table style="width:100%;border-collapse:collapse;font-size:14px">
+          <tr><td style="padding:8px 0;color:#64748b;width:160px">Vehicle</td><td style="padding:8px 0;font-weight:700;color:#0f2744">${vehicle_reg}</td></tr>
+          <tr style="background:#f8fafc"><td style="padding:8px 0;color:#64748b">Driver ID</td><td style="padding:8px 0;color:#1e293b">${driver_id ?? 'N/A'}</td></tr>
+          <tr><td style="padding:8px 0;color:#64748b">Time</td><td style="padding:8px 0;color:#1e293b">${timestamp}</td></tr>
+          <tr style="background:#f8fafc"><td style="padding:8px 0;color:#64748b">Inspection ID</td><td style="padding:8px 0;color:#1e293b">${inspection_id ?? 'N/A'}</td></tr>
+        </table>
+        <p style="font-size:14px;font-weight:700;color:#0f2744;margin:20px 0 8px">Faults reported:</p>
+        <table style="width:100%;border-collapse:collapse;font-size:14px">
+          ${faultRows}
+        </table>
+        <div style="background:#fff7ed;border-left:4px solid #f97316;padding:14px 16px;border-radius:8px;margin:20px 0">
+          <strong style="color:#c2410c">Action Required:</strong>
+          <p style="margin:6px 0 0;color:#9a3412;font-size:14px">Vehicle must be inspected before the next trip.</p>
+        </div>
+        <hr style="border:none;border-top:1px solid #e2e8f0;margin:20px 0">
+        <p style="font-size:11px;color:#94a3b8">INYATHI (Pty) Ltd · Fleet Management System · Automated alert</p>
+      </div>`;
+
+    const emailRes = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${resendKey}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        from: 'INYATHI Fleet <noreply@inyathitours.com>',
+        to: [adminEmail],
+        subject,
+        html,
+      }),
+    });
+
+    if (!emailRes.ok) {
+      const errText = await emailRes.text();
+      throw new Error(`Email send failed: ${errText}`);
     }
 
-    const results: Array<{ phone: string; ok: boolean; status: number; response: string }> = [];
-
-    for (const recipient of recipients) {
-      const url =
-        `https://api.callmebot.com/whatsapp.php?phone=${recipient.phone}` +
-        `&text=${message}&apikey=${recipient.apikey}`;
-      const alertRes = await fetch(url, { method: 'GET' });
-      const alertText = await alertRes.text();
-      results.push({
-        phone: recipient.phone,
-        ok: alertRes.ok,
-        status: alertRes.status,
-        response: alertText,
-      });
-    }
-
-    const anySuccess = results.some((r) => r.ok);
-
-    if (anySuccess && inspection_id) {
+    if (inspection_id) {
       const adminClient = createClient(
         Deno.env.get('SUPABASE_URL') ?? '',
         Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
       );
-
       await adminClient.from('inspections').update({ alert_sent: true }).eq('id', inspection_id);
     }
 
-    return new Response(JSON.stringify({ success: anySuccess, recipients: results }), {
+    return new Response(JSON.stringify({ success: true, sentTo: adminEmail }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
   } catch (error) {
