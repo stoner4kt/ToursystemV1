@@ -841,6 +841,9 @@ async function submitOTPVerification() {
     } else if (currentOTPContext?.resourceType === 'recon_edit') {
       await approveReconEditRequest(currentOTPContext.resourceId);
       currentOTPContext = null;
+    } else if (currentOTPContext?.resourceType === 'transfer_recon_edit') {
+      await approveTransferReconEditRequest(currentOTPContext.resourceId);
+      currentOTPContext = null;
     }
   } catch (err) {
     toast('Verification error: ' + err.message, 'error');
@@ -1232,6 +1235,77 @@ async function initiateReconEditApprovalOTP(reconId) {
 
 window.initiateReconEditApprovalOTP = initiateReconEditApprovalOTP;
 window.rejectReconEditRequest       = rejectReconEditRequest;
+
+// ── TRANSFER RECON EDIT APPROVAL (admin side) ─────────────────
+
+async function approveTransferReconEditRequest(sheetId) {
+  try {
+    const { error } = await sb.from('transfer_recon_sheets').update({
+      edit_request_status:      'approved',
+      edit_request_approved_by: currentProfile?.id,
+      edit_request_approved_at: new Date().toISOString(),
+      status:                   'draft',
+    }).eq('id', sheetId);
+    if (error) throw error;
+    toast('Transfer recon edit request approved — driver can now re-submit', 'success');
+    loadTransferReconReview?.();
+  } catch (err) {
+    toast('Approval failed: ' + err.message, 'error');
+  }
+}
+
+async function rejectTransferReconEditRequest(sheetId, reason) {
+  const rejReason = reason || prompt('Enter a reason for rejecting this edit request (optional):');
+  try {
+    const { error } = await sb.from('transfer_recon_sheets').update({
+      edit_request_status:           'rejected',
+      edit_request_rejection_reason: rejReason || null,
+    }).eq('id', sheetId);
+    if (error) throw error;
+    toast('Transfer recon edit request rejected', 'info');
+    loadTransferReconReview?.();
+  } catch (err) {
+    toast('Rejection failed: ' + err.message, 'error');
+  }
+}
+
+async function initiateTransferReconEditApprovalOTP(sheetId) {
+  if (!CONFIG.OTP_ENABLED) {
+    if (confirm('Approve this transfer recon edit request without OTP (OTP is disabled)?')) {
+      await approveTransferReconEditRequest(sheetId);
+    }
+    return;
+  }
+  try {
+    toast('Sending OTP to admin email…', 'info');
+    const res = await fetch(CONFIG.SEND_OTP_FUNCTION_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${CONFIG.SUPABASE_ANON_KEY}` },
+      body: JSON.stringify({
+        resource_type:  'transfer_recon_edit',
+        resource_id:    sheetId,
+        admin_id:       currentProfile?.id,
+        context_label:  'Transfer Recon Edit Approval',
+      }),
+    });
+    const result = await res.json();
+    if (!res.ok) { toast(result.error || 'Failed to send OTP', 'error'); return; }
+    const descEl = document.getElementById('otp-modal-desc');
+    if (descEl) descEl.textContent =
+      `OTP sent to ${CONFIG.ADMIN_EMAIL}. Verify to approve the driver's transfer recon edit request.`;
+    const codeEl = document.getElementById('otp-input');
+    if (codeEl) codeEl.value = '';
+    const noticeEl = document.getElementById('otp-attempts-notice');
+    if (noticeEl) noticeEl.style.display = 'none';
+    currentOTPContext = { resourceId: sheetId, resourceType: 'transfer_recon_edit' };
+    openModal('modal-otp-verify');
+  } catch (err) {
+    toast('OTP request failed: ' + err.message, 'error');
+  }
+}
+
+window.initiateTransferReconEditApprovalOTP = initiateTransferReconEditApprovalOTP;
+window.rejectTransferReconEditRequest       = rejectTransferReconEditRequest;
 
 // ── FLEET MANAGEMENT ─────────────────────────────────────────
 async function loadFleet() {
@@ -2660,7 +2734,7 @@ async function loadTransferReconReview() {
 
   let query = sb
     .from('transfer_recon_sheets')
-    .select('*, profiles!transfer_recon_sheets_driver_id_fkey(name, driver_id)')
+    .select('*, profiles!transfer_recon_sheets_driver_id_fkey(name, driver_id), edit_request_status, edit_request_reason')
     .order('week_start', { ascending: false });
 
   if (driverFilter) query = query.eq('driver_id', driverFilter);
@@ -2684,18 +2758,34 @@ async function loadTransferReconReview() {
     });
   }
 
-  container.innerHTML = data.map((s) => `
+  container.innerHTML = data.map((s) => {
+    const hasPendingEdit = s.edit_request_status === 'pending';
+    const editBadge = hasPendingEdit
+      ? `<span style="color:var(--orange);font-weight:700;font-size:.78rem">⚠ Edit Request Pending</span>`
+      : s.edit_request_status === 'approved'
+      ? `<span style="color:var(--green);font-size:.78rem">Edit Approved</span>`
+      : s.edit_request_status === 'rejected'
+      ? `<span style="color:var(--red);font-size:.78rem">Edit Rejected</span>`
+      : '';
+    return `
     <div class="inspection-item" onclick="openTransferReconDetail('${s.id}')">
       <div style="flex:1;min-width:0">
         <div class="inspection-title">${s.profiles?.name || s.driver_id} · Week ${formatDate(s.week_start)} — ${formatDate(s.week_end)}</div>
         <div class="inspection-meta">${(s.transfers || []).length} transfer(s) · ${s.submitted_at ? 'Submitted ' + formatDate(s.submitted_at) : 'Draft'}</div>
+        <div style="margin-top:3px">${statusBadge(s.status)}${editBadge ? '&nbsp;&nbsp;' + editBadge : ''}</div>
+        ${hasPendingEdit ? `<div style="font-size:.78rem;color:var(--text-muted);margin-top:3px">Reason: ${s.edit_request_reason || '—'}</div>` : ''}
       </div>
-      <div style="display:flex;gap:8px;align-items:center;flex-shrink:0">
+      <div style="display:flex;gap:8px;align-items:center;flex-shrink:0;flex-wrap:wrap;justify-content:flex-end">
         ${statusBadge(s.status)}
         <button class="btn btn-sm btn-outline" onclick="event.stopPropagation();openTransferReconDetail('${s.id}')">View</button>
+        ${hasPendingEdit
+          ? `<button class="btn btn-sm btn-amber" onclick="event.stopPropagation();initiateTransferReconEditApprovalOTP('${s.id}')" title="Approve edit request via OTP">Approve Edit</button>
+             <button class="btn btn-sm btn-danger" style="font-size:.73rem" onclick="event.stopPropagation();rejectTransferReconEditRequest('${s.id}')">Reject</button>`
+          : ''}
         <button class="btn btn-sm btn-amber" onclick="event.stopPropagation();downloadTransferReconPDF('${s.id}')">PDF</button>
       </div>
-    </div>`).join('');
+    </div>`;
+  }).join('');
 }
 
 async function openTransferReconDetail(id) {

@@ -748,25 +748,79 @@ async function submitReconEditRequest() {
 window.openReconEditRequest   = openReconEditRequest;
 window.submitReconEditRequest = submitReconEditRequest;
 
+// ── TRANSFER RECON EDIT REQUEST (driver side) ─────────────────
+function openTransferReconEditRequest(sheetId) {
+  const idEl = document.getElementById('transfer-recon-edit-request-id');
+  const reasonEl = document.getElementById('transfer-recon-edit-reason');
+  if (idEl) idEl.value = sheetId;
+  if (reasonEl) reasonEl.value = '';
+  openModal('modal-transfer-recon-edit-request');
+}
+
+async function submitTransferReconEditRequest() {
+  const sheetId = document.getElementById('transfer-recon-edit-request-id')?.value;
+  const reason  = document.getElementById('transfer-recon-edit-reason')?.value.trim();
+  if (!sheetId) return;
+  if (!reason) { toast('Please provide a reason for the edit request', 'error'); return; }
+
+  try {
+    const { error } = await sb.from('transfer_recon_sheets').update({
+      edit_request_status:  'pending',
+      edit_request_reason:  reason,
+      edit_request_sent_at: new Date().toISOString(),
+    }).eq('id', sheetId).eq('driver_id', currentProfile.driver_id);
+    if (error) throw error;
+    toast('Edit request submitted — admin will review and approve via OTP', 'success');
+    closeModal('modal-transfer-recon-edit-request');
+    await loadTransferReconHistory();
+  } catch (err) {
+    toast('Failed to submit request: ' + err.message, 'error');
+  }
+}
+
+window.openTransferReconEditRequest   = openTransferReconEditRequest;
+window.submitTransferReconEditRequest = submitTransferReconEditRequest;
+
 async function loadTransferReconHistory() {
   const container = document.getElementById('tr-history-list');
   if (!container) return;
   const { data, error } = await sb
     .from('transfer_recon_sheets')
-    .select('id,week_start,week_end,status,submitted_at,transfers')
+    .select('id,week_start,week_end,status,submitted_at,transfers,edit_request_status,edit_request_reason')
     .eq('driver_id', currentProfile.driver_id)
     .order('week_start', { ascending: false })
     .limit(10);
   if (error) { container.innerHTML = `<p style="color:var(--red)">${error.message}</p>`; return; }
-  if (!data?.length) { container.innerHTML = `<div class="empty-state"><div class="empty-icon">📝</div><p>No previous submissions.</p></div>`; return; }
-  container.innerHTML = data.map((s) => `
+  if (!data?.length) {
+    container.innerHTML = `<div class="empty-state"><div class="empty-icon">📝</div><p>No previous submissions.</p></div>`;
+    return;
+  }
+  container.innerHTML = data.map((s) => {
+    const canRequest = s.status === 'submitted' &&
+      (!s.edit_request_status || s.edit_request_status === 'none' || s.edit_request_status === 'rejected');
+    const editRequestBadge = s.edit_request_status === 'pending'
+      ? `<span style="color:var(--orange);font-size:.78rem;font-weight:700">⏳ Edit request pending</span>`
+      : s.edit_request_status === 'approved'
+      ? `<span style="color:var(--green);font-size:.78rem;font-weight:700">✓ Edit approved</span>`
+      : s.edit_request_status === 'rejected'
+      ? `<span style="color:var(--red);font-size:.78rem" title="Rejected by admin">✗ Request rejected</span>`
+      : '';
+    return `
     <div class="inspection-item">
       <div style="flex:1;min-width:0">
         <div class="inspection-title">Week: ${formatDate(s.week_start)} — ${formatDate(s.week_end)}</div>
         <div class="inspection-meta">${(s.transfers||[]).length} transfer(s) · Submitted: ${s.submitted_at ? formatDate(s.submitted_at) : '—'}</div>
+        ${editRequestBadge ? `<div style="margin-top:4px">${editRequestBadge}</div>` : ''}
       </div>
-      ${statusBadge(s.status)}
-    </div>`).join('');
+      <div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px;flex-shrink:0">
+        ${statusBadge(s.status)}
+        ${canRequest
+          ? `<button class="btn btn-sm btn-outline" style="font-size:.75rem"
+               onclick="openTransferReconEditRequest('${s.id}')">Request Edit</button>`
+          : ''}
+      </div>
+    </div>`;
+  }).join('');
 }
 
 // ── DRIVER TRAFFIC FINES ─────────────────────────────────────
