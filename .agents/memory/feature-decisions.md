@@ -54,6 +54,17 @@ description: Key decisions made when implementing the 8 production features for 
 
 **Why public delivery:** Supabase auth already controls who can log in; document links are only shown to authenticated users. Authenticated Cloudinary delivery added no real security but required separate signed delivery URL generation (which would expire and break stored links).
 
+## Regional Data Separation (Cape Town / Joburg toggle)
+- `location TEXT NOT NULL DEFAULT 'Cape Town' CHECK (location IN ('Cape Town','Joburg'))` added to `profiles`, `vehicles`, `bookings`; `driver_invites` gets `location TEXT` (no default — set at invite time)
+- Migration: `supabase/migrations/20260621000000_add_region_location.sql` (idempotent, run in Supabase dashboard)
+- `currentRegion` persisted in `localStorage` via key `REGION_STORAGE_KEY = 'inyathi-admin-region'`; `currentBookingLocation` tracks the location of the booking currently open in the modal
+- `loadBookingDropdowns(locationOverride?)` filters drivers and vehicles by `loc = locationOverride || currentRegion`; called with `data.location` in `openEditBooking` so the edit form shows only same-region assets
+- Fleet table: 8 columns (added Location badge); Drivers manage table: 6 columns (added Location badge); both have location + status filter dropdowns wired to change events
+- `loadPendingDeletionsBadge` drops `head:true` count approach — fetches `bookings!inner(location)` with `.eq('bookings.location', currentRegion)` and counts client-side (head:true + join filter incompatible)
+- `loadAdminTrafficFines` uses `bookings!inner!traffic_fines_booking_id_fkey(...)` + `.eq('bookings.location', currentRegion)`
+- `validateVehicleAvailability` + `validateDriverAvailability` do a location pre-check against `currentBookingLocation` before the overlap query
+- `driver-invite` edge function validates `location` field (must be 'Cape Town' or 'Joburg') and stores it in `driver_invites`; `driver-signup.html` reads it back and applies it to the `profiles` row
+
 ## Edge Functions deployment checklist
 Before setting `CONFIG.OTP_ENABLED = true`:
 1. Run `supabase functions deploy send-otp-email` 

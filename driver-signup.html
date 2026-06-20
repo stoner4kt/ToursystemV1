@@ -15,7 +15,7 @@ const statusEl=document.getElementById('status'); const form=document.getElement
   if (!session?.user) { statusEl.textContent='This signup page is protected. Use the invite link from your email.'; return; }
   const sessionEmail=(session.user.email||'').toLowerCase();
   if (!invitedEmail || sessionEmail!==invitedEmail) { statusEl.textContent='Invalid invite link for this account.'; return; }
-  const { data:invite, error } = await sb.from('driver_invites').select('email,used_at').eq('email', sessionEmail).maybeSingle();
+  const { data:invite, error } = await sb.from('driver_invites').select('email,used_at,location').eq('email', sessionEmail).maybeSingle();
   if (error || !invite) { statusEl.textContent='This email was not invited by an admin.'; await sb.auth.signOut(); return; }
   if (invite.used_at) { statusEl.textContent='This invite link has already been used. Please log in.'; return; }
   document.getElementById('email').value=sessionEmail;
@@ -28,7 +28,7 @@ form.addEventListener('submit', async (e)=>{e.preventDefault();
   const { data:{user} } = await sb.auth.getUser();
   const { error:pwErr } = await sb.auth.updateUser({ password: p });
   if (pwErr) { btnSave(false); return show(pwErr.message,'error'); }
-  await sb.from('profiles').update({ role:'driver', is_active:true }).eq('id', user.id);
+  await sb.from('profiles').update({ role:'driver', is_active:true, ...(invite?.location ? { location: invite.location } : {}) }).eq('id', user.id);
   await sb.from('driver_invites').update({ used_at:new Date().toISOString() }).eq('email', user.email.toLowerCase());
   show('Account created. Redirecting to driver dashboard…','success'); setTimeout(()=>location.href='/driver-dashboard.html',1200);
 });

@@ -136,6 +136,22 @@ a { color: inherit; text-decoration: none; }
 .sidebar-nav-icon { font-size: 1.1rem; width: 22px; text-align: center; flex-shrink: 0; }
 .sidebar-divider { height: 1px; background: rgba(255,255,255,.1); margin: 6px 16px; }
 
+/* ── REGION TOGGLE ──────────────────────────────────────────── */
+.region-toggle {
+  display: flex; border-radius: 20px; overflow: hidden;
+  border: 1.5px solid rgba(255,255,255,.25); flex-shrink: 0;
+}
+.region-toggle-btn {
+  background: none; border: none; border-radius: 0;
+  color: rgba(255,255,255,.65); font-size: .75rem; font-weight: 600;
+  padding: 4px 10px; cursor: pointer;
+  transition: background var(--transition), color var(--transition);
+  white-space: nowrap;
+}
+.region-toggle-btn + .region-toggle-btn { border-left: 1px solid rgba(255,255,255,.2); }
+.region-toggle-btn:hover { background: rgba(255,255,255,.1); color: #fff; }
+.region-toggle-btn.active { background: var(--amber); color: var(--navy); }
+
 .sidebar-footer {
   padding: 12px 8px;
   border-top: 1px solid rgba(255,255,255,.1);

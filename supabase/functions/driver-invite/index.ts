@@ -62,11 +62,15 @@ serve(async (req: Request) => {
     if (profileError && !isAdmin) return json({ error: `Unable to verify admin role (${profileError.message}).` }, 403);
     if (!isAdmin) return json({ error: 'Forbidden: admin account required.' }, 403);
 
-    const { email, fullName } = await req.json();
+    const { email, fullName, location } = await req.json();
     const normalizedEmail = String(email || '').trim().toLowerCase();
     const normalizedName = String(fullName || '').trim();
+    const normalizedLocation = String(location || '').trim();
     if (!normalizedEmail || !normalizedName) return json({ error: 'Name and email are required' }, 400);
     if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(normalizedEmail)) return json({ error: 'Enter a valid driver email address' }, 400);
+    if (normalizedLocation !== 'Cape Town' && normalizedLocation !== 'Joburg') {
+      return json({ error: 'Location must be Cape Town or Joburg' }, 400);
+    }
 
     const adminClient = createClient(supabaseUrl, serviceRoleKey, {
       auth: { persistSession: false, autoRefreshToken: false },
@@ -75,6 +79,7 @@ serve(async (req: Request) => {
     const { error: inviteRowError } = await adminClient.from('driver_invites').upsert({
       email: normalizedEmail,
       full_name: normalizedName,
+      location: normalizedLocation,
       invited_by: me?.id ?? null,
       invited_at: new Date().toISOString(),
       used_at: null,
