@@ -514,3 +514,24 @@ ALTER TABLE public.inspections
 -- Rented vehicle inspection registrations may not exist in the owned fleet table.
 ALTER TABLE public.inspections
   DROP CONSTRAINT IF EXISTS inspections_vehicle_reg_fkey;
+
+-- ============================================================
+--  REGION SUPPORT — Cape Town / Joburg (mirrors migration 20260621000000)
+-- ============================================================
+ALTER TABLE public.profiles
+  ADD COLUMN IF NOT EXISTS location TEXT NOT NULL DEFAULT 'Cape Town'
+    CHECK (location IN ('Cape Town', 'Joburg'));
+CREATE INDEX IF NOT EXISTS idx_profiles_location ON public.profiles(location);
+
+ALTER TABLE public.vehicles
+  ADD COLUMN IF NOT EXISTS location TEXT NOT NULL DEFAULT 'Cape Town'
+    CHECK (location IN ('Cape Town', 'Joburg'));
+CREATE INDEX IF NOT EXISTS idx_vehicles_location ON public.vehicles(location);
+
+ALTER TABLE public.bookings
+  ADD COLUMN IF NOT EXISTS location TEXT NOT NULL DEFAULT 'Cape Town'
+    CHECK (location IN ('Cape Town', 'Joburg'));
+CREATE INDEX IF NOT EXISTS idx_bookings_location ON public.bookings(location);
+
+ALTER TABLE public.driver_invites
+  ADD COLUMN IF NOT EXISTS location TEXT;

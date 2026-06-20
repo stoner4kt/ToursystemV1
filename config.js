@@ -33,6 +33,9 @@ const CONFIG = {
   // ── Maintenance Alert Edge Function (Feature 4) ───────────
   MAINTENANCE_ALERT_FUNCTION_URL: 'https://jxsesdcwdjrxydkvhpsh.supabase.co/functions/v1/check-vehicle-maintenance',
 
+  // ── Regions ───────────────────────────────────────────────
+  LOCATIONS: ['Cape Town', 'Joburg'],
+
   // ── Feature Flags ─────────────────────────────────────────
   // Set to true only after deploying OTP edge functions + RESEND_API_KEY secret
   OTP_ENABLED: false,

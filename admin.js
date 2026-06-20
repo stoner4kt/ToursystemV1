@@ -14,6 +14,7 @@
   if (sidebarName) sidebarName.textContent = name;
 
   initSidebar();
+  initRegionToggle();
 
   document.getElementById('booking-is-rented')?.addEventListener('change', function() {
     document.getElementById('rented-vehicle-fields').style.display = this.checked ? 'block' : 'none';
@@ -72,6 +73,35 @@ document.querySelectorAll('.tab-btn').forEach((btn) => {
   btn.addEventListener('click', () => switchTab(btn.dataset.tab));
 });
 
+// ── REGION ────────────────────────────────────────────────────
+const REGION_STORAGE_KEY = 'inyathi-admin-region';
+let currentRegion = localStorage.getItem(REGION_STORAGE_KEY) || 'Cape Town';
+let currentBookingLocation = currentRegion;
+
+function initRegionToggle() {
+  document.querySelectorAll('.region-toggle-btn').forEach((btn) => {
+    btn.classList.toggle('active', btn.dataset.region === currentRegion);
+    btn.addEventListener('click', () => setRegion(btn.dataset.region));
+  });
+}
+
+function setRegion(region) {
+  if (region === currentRegion) return;
+  currentRegion = region;
+  localStorage.setItem(REGION_STORAGE_KEY, region);
+  document.querySelectorAll('.region-toggle-btn').forEach((btn) =>
+    btn.classList.toggle('active', btn.dataset.region === region)
+  );
+  refreshRegionScopedData();
+}
+
+async function refreshRegionScopedData() {
+  await loadPendingDeletionsBadge();
+  await loadBookingDropdowns();
+  const activeTab = document.querySelector('.tab-btn.active')?.dataset.tab || 'calendar';
+  switchTab(activeTab);
+}
+
 // ── CALENDAR ──────────────────────────────────────────────────
 let calDate       = new Date();
 let allBookings   = [];
@@ -89,9 +119,10 @@ let driverOptions = [];
 let currentBookingDocuments = [];
 const ALLOWED_DOC_TYPES = ['application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'];
 
-async function loadBookingDropdowns() {
+async function loadBookingDropdowns(locationOverride) {
+  const loc = locationOverride || currentRegion;
   const { data: drivers } = await sb.from('profiles')
-    .select('driver_id,name').eq('role','driver').eq('is_active',true).order('name');
+    .select('driver_id,name,location').eq('role','driver').eq('is_active',true).eq('location', loc).order('name');
   driverOptions = drivers || [];
 
   const dsel = document.getElementById('booking-driver');
@@ -99,18 +130,18 @@ async function loadBookingDropdowns() {
     dsel.innerHTML = '<option value="">— Unassigned —</option>';
     driverOptions.forEach((d) => {
       const opt = document.createElement('option');
-      opt.value = d.driver_id; opt.textContent = `${d.name} (${d.driver_id})`;
+      opt.value = d.driver_id; opt.textContent = `${d.name} (${d.driver_id}) — ${d.location}`;
       dsel.appendChild(opt);
     });
   }
 
-  const { data: vehicles } = await sb.from('vehicles').select('registration_no,model').eq('status','active').order('registration_no');
+  const { data: vehicles } = await sb.from('vehicles').select('registration_no,model,location').eq('status','active').eq('location', loc).order('registration_no');
   const vsel = document.getElementById('booking-vehicle');
   if (vsel) {
     vsel.innerHTML = '<option value="">— Unassigned —</option>';
     (vehicles || []).forEach((v) => {
       const opt = document.createElement('option');
-      opt.value = v.registration_no; opt.textContent = `${v.registration_no} — ${v.model}`;
+      opt.value = v.registration_no; opt.textContent = `${v.registration_no} — ${v.model} (${v.location})`;
       vsel.appendChild(opt);
     });
   }
@@ -147,7 +178,7 @@ async function renderCalendar() {
 
   // Fetch bookings and vehicle colours in parallel (single round-trip)
   const [{ data: bookingData }, vehicleResult] = await Promise.all([
-    sb.from('bookings').select('*').lte('start_date', to).gte('end_date', from).order('start_date'),
+    sb.from('bookings').select('*').eq('location', currentRegion).lte('start_date', to).gte('end_date', from).order('start_date'),
     sb.from('vehicles').select('registration_no, calendar_color').order('registration_no'),
   ]);
   allBookings = bookingData || [];
@@ -367,7 +398,7 @@ function showBookingsForDate(dateStr, cell) {
 }
 
 async function loadCalendarStats() {
-  const { data } = await sb.from('bookings').select('status');
+  const { data } = await sb.from('bookings').select('status').eq('location', currentRegion);
   const all = data || [];
   document.getElementById('stat-total').textContent     = all.length;
   document.getElementById('stat-confirmed').textContent = all.filter(b=>b.status==='confirmed').length;
@@ -391,6 +422,7 @@ function getBookingNotesInput() {
 }
 
 function resetBookingForm() {
+  currentBookingLocation = currentRegion;
   toggleBookingLockState({ is_locked: false });
   document.getElementById('booking-id').value          = '';
   document.getElementById('booking-invoice').value     = `INV-${Date.now().toString().slice(-6)}`;
@@ -553,6 +585,8 @@ window.removeBookingDocument = removeBookingDocument;
 async function openEditBooking(id) {
   const { data } = await sb.from('bookings').select('*').eq('id', id).single();
   if (!data) return;
+  currentBookingLocation = data.location || 'Cape Town';
+  await loadBookingDropdowns(data.location);
   document.getElementById('booking-id').value         = data.id;
   document.getElementById('booking-invoice').value    = data.invoice_no;
   document.getElementById('booking-client').value     = data.client_name;
@@ -629,6 +663,7 @@ document.getElementById('form-booking')?.addEventListener('submit', async (e) =>
     status:               document.getElementById('booking-status').value,
     notes:                (getBookingNotesInput()?.value || '').trim(),
   };
+  if (!id) payload.location = currentRegion;
   const files = Array.from(document.getElementById('booking-documents-input')?.files || []);
   if (files.length > 5) return toast('Maximum 5 files per booking', 'error');
   for (const f of files) {
@@ -685,7 +720,7 @@ async function loadBookingsArchive() {
   const tbody = document.getElementById('bookings-archive-tbody');
   if (!tbody) return;
   tbody.innerHTML = `<tr><td colspan="9"><div class="spinner"></div></td></tr>`;
-  const { data, error } = await sb.from('bookings').select('*').order('start_date', { ascending: false });
+  const { data, error } = await sb.from('bookings').select('*').eq('location', currentRegion).order('start_date', { ascending: false });
   if (error) { tbody.innerHTML = `<tr><td colspan="9">${error.message}</td></tr>`; return; }
   const status = document.getElementById('archive-status-filter')?.value || 'all';
   const from = document.getElementById('archive-from-date')?.value || '';
@@ -1000,15 +1035,16 @@ window.executeBookingDeletion = executeBookingDeletion;
 // ── PENDING DELETIONS (main admin review) ─────────────────────
 
 async function loadPendingDeletionsBadge() {
-  const { count } = await sb
+  const { data: reqs } = await sb
     .from('booking_delete_requests')
-    .select('id', { count: 'exact', head: true })
-    .eq('status', 'pending');
-
+    .select('id, bookings!inner(location)')
+    .eq('status', 'pending')
+    .eq('bookings.location', currentRegion);
+  const count = reqs?.length ?? 0;
   const el   = document.getElementById('stat-pending-deletions');
   const card = document.getElementById('stat-pending-deletions-card');
-  if (el)   el.textContent = count ?? 0;
-  if (card) card.style.display = (count && count > 0) ? '' : 'none';
+  if (el)   el.textContent = count;
+  if (card) card.style.display = count > 0 ? '' : 'none';
 }
 
 async function openPendingDeletionsModal() {
@@ -1026,10 +1062,11 @@ async function loadPendingDeletionsDetail() {
     .from('booking_delete_requests')
     .select(`
       *,
-      bookings(invoice_no, client_name, start_date, end_date, status),
+      bookings!inner(invoice_no, client_name, start_date, end_date, status, location),
       profiles!booking_delete_requests_requested_by_fkey(name)
     `)
     .eq('status', 'pending')
+    .eq('bookings.location', currentRegion)
     .order('created_at', { ascending: false });
 
   if (error) {
@@ -1311,11 +1348,16 @@ window.rejectTransferReconEditRequest       = rejectTransferReconEditRequest;
 async function loadFleet() {
   const tbody = document.getElementById('fleet-tbody');
   if (!tbody) return;
-  tbody.innerHTML = `<tr><td colspan="7"><div class="spinner"></div></td></tr>`;
-  const { data, error } = await sb.from('vehicles').select('*').order('registration_no');
-  if (error) { tbody.innerHTML = `<tr><td colspan="7">Error loading fleet: ${error.message}</td></tr>`; return; }
+  tbody.innerHTML = `<tr><td colspan="8"><div class="spinner"></div></td></tr>`;
+  let q = sb.from('vehicles').select('*').order('registration_no');
+  const locFilter    = document.getElementById('fleet-filter-location')?.value;
+  const statusFilter = document.getElementById('fleet-filter-status')?.value;
+  if (locFilter)    q = q.eq('location', locFilter);
+  if (statusFilter) q = q.eq('status', statusFilter);
+  const { data, error } = await q;
+  if (error) { tbody.innerHTML = `<tr><td colspan="8">Error loading fleet: ${error.message}</td></tr>`; return; }
   if (!data.length) {
-    tbody.innerHTML = `<tr><td colspan="7"><div class="empty-state"><div class="empty-icon">🚌</div><p>No vehicles added yet.</p></div></td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="8"><div class="empty-state"><div class="empty-icon">🚌</div><p>No vehicles found.</p></div></td></tr>`;
     return;
   }
   tbody.innerHTML = data.map((v) => {
@@ -1326,6 +1368,7 @@ async function loadFleet() {
       <td><strong>${v.registration_no}</strong></td>
       <td>${v.make || ''} ${v.model}</td>
       <td>${v.year || '—'}</td>
+      <td><span class="badge badge-blue">${escapeHtml(v.location || '—')}</span></td>
       <td>${formatMileage(v.current_mileage)}</td>
       <td>
         <div class="progress-bar" title="${formatMileage(v.current_mileage)} / ${formatMileage(v.next_service_km)}">
@@ -1346,6 +1389,9 @@ async function loadFleet() {
   }).join('');
 }
 
+document.getElementById('fleet-filter-location')?.addEventListener('change', loadFleet);
+document.getElementById('fleet-filter-status')?.addEventListener('change', loadFleet);
+
 document.getElementById('btn-add-vehicle')?.addEventListener('click', () => {
   resetVehicleForm();
   document.getElementById('modal-vehicle-title').textContent = 'Add Vehicle';
@@ -1355,7 +1401,8 @@ document.getElementById('btn-add-vehicle')?.addEventListener('click', () => {
 function resetVehicleForm() {
   ['vehicle-id','vehicle-reg','vehicle-model','vehicle-make','vehicle-year','vehicle-mileage','vehicle-service-km','vehicle-notes']
     .forEach((id) => { const el = document.getElementById(id); if (el) el.value = ''; });
-  document.getElementById('vehicle-status').value = 'active';
+  document.getElementById('vehicle-status').value   = 'active';
+  document.getElementById('vehicle-location').value = currentRegion;
 }
 
 async function openEditVehicle(id) {
@@ -1370,6 +1417,7 @@ async function openEditVehicle(id) {
   document.getElementById('vehicle-service-km').value  = data.next_service_km || '';
   document.getElementById('vehicle-status').value      = data.status;
   document.getElementById('vehicle-notes').value       = data.notes || '';
+  document.getElementById('vehicle-location').value    = data.location || 'Cape Town';
   document.getElementById('modal-vehicle-title').textContent = 'Edit Vehicle';
   openModal('modal-vehicle');
 }
@@ -1386,6 +1434,7 @@ document.getElementById('form-vehicle')?.addEventListener('submit', async (e) =>
     next_service_km: parseInt(document.getElementById('vehicle-service-km').value) || null,
     status:          document.getElementById('vehicle-status').value,
     notes:           document.getElementById('vehicle-notes').value.trim() || null,
+    location:        document.getElementById('vehicle-location').value,
   };
   const submitBtn = e.target.querySelector('[type="submit"]');
   submitBtn.disabled = true; submitBtn.textContent = 'Saving…';
@@ -1417,7 +1466,7 @@ async function loadActiveTrips() {
   if (!tbody) return;
   const today = new Date().toISOString().split('T')[0];
   const { data, error } = await sb.from('bookings')
-    .select('*').lte('start_date', today).gte('end_date', today).neq('status','cancelled').order('start_date');
+    .select('*').eq('location', currentRegion).lte('start_date', today).gte('end_date', today).neq('status','cancelled').order('start_date');
   if (error) { tbody.innerHTML = `<tr><td colspan="5">Error: ${error.message}</td></tr>`; return; }
   if (!data?.length) { tbody.innerHTML = `<tr><td colspan="5"><div class="empty-state"><div class="empty-icon">🛣️</div><p>No active trips today.</p></div></td></tr>`; return; }
   tbody.innerHTML = data.map((b) => `
@@ -1436,7 +1485,7 @@ async function loadUpcomingTrips() {
   const tomorrow = new Date(); tomorrow.setDate(tomorrow.getDate() + 1);
   const fromDate = tomorrow.toISOString().split('T')[0];
   const { data, error } = await sb.from('bookings')
-    .select('*').gte('start_date', fromDate).neq('status','cancelled').order('start_date').limit(20);
+    .select('*').eq('location', currentRegion).gte('start_date', fromDate).neq('status','cancelled').order('start_date').limit(20);
   if (error) { tbody.innerHTML = `<tr><td colspan="5">Error: ${error.message}</td></tr>`; return; }
   if (!data?.length) { tbody.innerHTML = `<tr><td colspan="5"><div class="empty-state"><div class="empty-icon">📅</div><p>No upcoming trips.</p></div></td></tr>`; return; }
   tbody.innerHTML = data.map((b) => `
@@ -1452,23 +1501,33 @@ async function loadUpcomingTrips() {
 async function loadManageDrivers() {
   const tbody = document.getElementById('drivers-manage-tbody');
   if (!tbody) return;
-  tbody.innerHTML = `<tr><td colspan="5"><div class="spinner"></div></td></tr>`;
-  const { data: drivers, error } = await sb.from('profiles')
-    .select('id,driver_id,name,phone,is_active').eq('role','driver').order('name');
-  if (error) { tbody.innerHTML = `<tr><td colspan="5">Error: ${error.message}</td></tr>`; return; }
-  if (!drivers?.length) { tbody.innerHTML = `<tr><td colspan="5"><div class="empty-state"><div class="empty-icon">👥</div><p>No drivers found.</p></div></td></tr>`; return; }
+  tbody.innerHTML = `<tr><td colspan="6"><div class="spinner"></div></td></tr>`;
+  let q = sb.from('profiles').select('id,driver_id,name,phone,is_active,location').eq('role','driver').order('name');
+  const locFilter    = document.getElementById('driver-filter-location')?.value;
+  const activeFilter = document.getElementById('driver-filter-status')?.value;
+  if (locFilter) q = q.eq('location', locFilter);
+  if (activeFilter !== '' && activeFilter !== undefined && activeFilter !== null) {
+    q = q.eq('is_active', activeFilter === 'true');
+  }
+  const { data: drivers, error } = await q;
+  if (error) { tbody.innerHTML = `<tr><td colspan="6">Error: ${error.message}</td></tr>`; return; }
+  if (!drivers?.length) { tbody.innerHTML = `<tr><td colspan="6"><div class="empty-state"><div class="empty-icon">👥</div><p>No drivers found.</p></div></td></tr>`; return; }
   tbody.innerHTML = drivers.map((d) => `
     <tr>
-      <td><strong>${d.name}</strong></td>
-      <td>${d.driver_id || '—'}</td>
-      <td>${d.phone || '—'}</td>
+      <td><strong>${escapeHtml(d.name)}</strong></td>
+      <td>${escapeHtml(d.driver_id || '—')}</td>
+      <td>${escapeHtml(d.phone || '—')}</td>
+      <td><span class="badge badge-blue">${escapeHtml(d.location || '—')}</span></td>
       <td>${statusBadge(d.is_active ? 'active' : 'decommissioned')}</td>
       <td>
         <button class="btn btn-sm btn-outline" onclick="openEditDriver('${d.id}')">Edit</button>
-        <button class="btn btn-sm btn-danger" onclick="deleteDriver('${d.id}','${d.name}')">Del</button>
+        <button class="btn btn-sm btn-danger" onclick="deleteDriver('${d.id}','${escapeHtml(d.name)}')">Del</button>
       </td>
     </tr>`).join('');
 }
+
+document.getElementById('driver-filter-location')?.addEventListener('change', loadManageDrivers);
+document.getElementById('driver-filter-status')?.addEventListener('change', loadManageDrivers);
 
 async function deleteDriver(id, name) {
   if (!confirm(`Delete driver ${name}? This cannot be undone.`)) return;
@@ -1491,6 +1550,8 @@ document.getElementById('btn-add-driver')?.addEventListener('click', () => {
 function resetDriverForm() {
   ['driver-id','driver-name-input','driver-email-input','driver-phone-input','driver-code-input']
     .forEach((id) => { const el = document.getElementById(id); if (el) el.value = ''; });
+  const locEl = document.getElementById('driver-location-input');
+  if (locEl) locEl.value = currentRegion;
 }
 
 async function openEditDriver(id) {
@@ -1501,7 +1562,8 @@ async function openEditDriver(id) {
   document.getElementById('driver-email-input').value  = data.email || '';
   document.getElementById('driver-code-input').value   = data.driver_id || '';
   document.getElementById('driver-phone-input').value  = data.phone || '';
-  document.getElementById('driver-active-input').value = String(data.is_active !== false);
+  document.getElementById('driver-active-input').value    = String(data.is_active !== false);
+  document.getElementById('driver-location-input').value  = data.location || 'Cape Town';
   document.getElementById('driver-email-group').style.display  = 'none';
   document.getElementById('driver-code-group').style.display   = '';
   document.getElementById('driver-active-group').style.display = '';
@@ -1518,16 +1580,18 @@ document.getElementById('form-driver')?.addEventListener('submit', async (e) => 
 
   submitBtn.disabled = true; submitBtn.textContent = id ? 'Saving…' : 'Sending invite…';
 
+  const location = document.getElementById('driver-location-input').value;
   let error = null;
   if (id) {
     ({ error } = await sb.from('profiles').update({
       name,
       phone,
       is_active: document.getElementById('driver-active-input').value === 'true',
+      location,
     }).eq('id', id));
   } else {
     const email = document.getElementById('driver-email-input').value.trim().toLowerCase();
-    ({ error } = await inviteDriver(email, name));
+    ({ error } = await inviteDriver(email, name, location));
   }
 
   submitBtn.disabled = false; submitBtn.textContent = 'Save Driver';
@@ -1537,9 +1601,9 @@ document.getElementById('form-driver')?.addEventListener('submit', async (e) => 
   loadManageDrivers();
 });
 
-async function inviteDriver(email, fullName) {
+async function inviteDriver(email, fullName, location) {
   const { data, error } = await sb.functions.invoke('driver-invite', {
-    body: { email, fullName },
+    body: { email, fullName, location },
   });
 
   if (error) return { error: new Error(await getFunctionErrorMessage(error)) };
@@ -2245,6 +2309,10 @@ async function validateVehicleAvailability(vehicleReg,startDate,endDate,excludeB
   if(!vehicleReg||!startDate||!endDate) return {ok:true};
   const isRented = document.getElementById('booking-is-rented')?.checked;
   if(isRented) return {ok:true};
+  const { data: vehicle } = await sb.from('vehicles').select('location').eq('registration_no', vehicleReg).maybeSingle();
+  if(vehicle && vehicle.location !== currentBookingLocation){
+    return {ok:false,message:`Vehicle ${vehicleReg} is based in ${vehicle.location} and cannot be assigned to a ${currentBookingLocation} booking.`};
+  }
   let q=sb.from('bookings').select('id,invoice_no,start_date,end_date,status').eq('assigned_vehicle_reg',vehicleReg).neq('status','cancelled').lte('start_date',endDate).gte('end_date',startDate);
   if(excludeBookingId) q=q.neq('id',excludeBookingId);
   const {data,error}=await q; if(error) return {ok:false,message:error.message};
@@ -2253,6 +2321,10 @@ async function validateVehicleAvailability(vehicleReg,startDate,endDate,excludeB
 }
 async function validateDriverAvailability(driverId, startDate, endDate, excludeBookingId = null) {
   if (!driverId || !startDate || !endDate) return { ok: true };
+  const { data: driver } = await sb.from('profiles').select('location').eq('driver_id', driverId).maybeSingle();
+  if (driver && driver.location !== currentBookingLocation) {
+    return { ok: false, message: `Driver ${driverId} is based in ${driver.location} and cannot be assigned to a ${currentBookingLocation} booking.` };
+  }
   let q = sb.from('bookings')
     .select('id,invoice_no,start_date,end_date,client_name')
     .eq('assigned_driver_id', driverId)
@@ -3125,7 +3197,8 @@ async function loadAdminTrafficFines() {
   tbody.innerHTML = '<tr><td colspan="7"><div class="spinner"></div></td></tr>';
   const { data, error } = await sb
     .from('traffic_fines')
-    .select('*, bookings!traffic_fines_booking_id_fkey(invoice_no,client_name), profiles!traffic_fines_driver_id_fkey(name,phone,email)')
+    .select('*, bookings!inner!traffic_fines_booking_id_fkey(invoice_no,client_name,location), profiles!traffic_fines_driver_id_fkey(name,phone,email)')
+    .eq('bookings.location', currentRegion)
     .order('fine_timestamp', { ascending: false })
     .limit(100);
 

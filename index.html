@@ -122,6 +122,10 @@
     <div class="header-search" role="search">
       <input type="search" class="form-control" placeholder="Search bookings, drivers, vehicles…" aria-label="Search">
     </div>
+    <div class="region-toggle" id="region-toggle" role="group" aria-label="Region">
+      <button type="button" class="region-toggle-btn" data-region="Cape Town">Cape Town</button>
+      <button type="button" class="region-toggle-btn" data-region="Joburg">Joburg</button>
+    </div>
     <span data-sync-wrapper style="display:none">
       <span class="sync-count sync-badge">0</span>
     </span>
@@ -197,16 +201,35 @@
         <div class="card-title">Fleet Vehicles</div>
         <button class="btn btn-amber btn-sm" id="btn-add-vehicle">+ Add Vehicle</button>
       </div>
+      <div class="form-row" style="margin-bottom:12px">
+        <div class="form-group">
+          <label>Location</label>
+          <select id="fleet-filter-location" class="form-control">
+            <option value="">All Locations</option>
+            <option value="Cape Town">Cape Town</option>
+            <option value="Joburg">Joburg</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Status</label>
+          <select id="fleet-filter-status" class="form-control">
+            <option value="">All Statuses</option>
+            <option value="active">Active</option>
+            <option value="maintenance">In Maintenance</option>
+            <option value="decommissioned">Decommissioned</option>
+          </select>
+        </div>
+      </div>
       <div class="table-wrapper">
         <table>
           <thead>
             <tr>
               <th>Reg No</th><th>Model</th><th>Year</th>
-              <th>Mileage</th><th>Next Service</th><th>Status</th><th>Actions</th>
+              <th>Location</th><th>Mileage</th><th>Next Service</th><th>Status</th><th>Actions</th>
             </tr>
           </thead>
           <tbody id="fleet-tbody">
-            <tr><td colspan="7"><div class="spinner"></div></td></tr>
+            <tr><td colspan="8"><div class="spinner"></div></td></tr>
           </tbody>
         </table>
       </div>
@@ -228,7 +251,25 @@
         <div class="card-title">Manage Drivers</div>
         <button class="btn btn-amber btn-sm" id="btn-add-driver">+ Add Driver</button>
       </div>
-      <div class="table-wrapper"><table><thead><tr><th>Name</th><th>Driver ID</th><th>Phone</th><th>Status</th><th>Actions</th></tr></thead><tbody id="drivers-manage-tbody"><tr><td colspan="5"><div class="spinner"></div></td></tr></tbody></table></div>
+      <div class="form-row" style="margin-bottom:12px">
+        <div class="form-group">
+          <label>Location</label>
+          <select id="driver-filter-location" class="form-control">
+            <option value="">All Locations</option>
+            <option value="Cape Town">Cape Town</option>
+            <option value="Joburg">Joburg</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Status</label>
+          <select id="driver-filter-status" class="form-control">
+            <option value="">All Statuses</option>
+            <option value="true">Active</option>
+            <option value="false">Inactive</option>
+          </select>
+        </div>
+      </div>
+      <div class="table-wrapper"><table><thead><tr><th>Name</th><th>Driver ID</th><th>Phone</th><th>Location</th><th>Status</th><th>Actions</th></tr></thead><tbody id="drivers-manage-tbody"><tr><td colspan="6"><div class="spinner"></div></td></tr></tbody></table></div>
     </div>
   </div>
 
@@ -451,6 +492,13 @@
       <div class="form-group" id="driver-code-group" style="display:none"><label>Driver ID</label><input type="text" id="driver-code-input" class="form-control" readonly></div>
       <div class="form-group"><label>Phone</label><input type="text" id="driver-phone-input" class="form-control"></div>
       <div class="form-group" id="driver-active-group" style="display:none"><label>Status</label><select id="driver-active-input" class="form-control"><option value="true">Active</option><option value="false">Inactive</option></select></div>
+      <div class="form-group" id="driver-location-group">
+        <label>Location <span class="required">*</span></label>
+        <select id="driver-location-input" class="form-control">
+          <option value="Cape Town">Cape Town</option>
+          <option value="Joburg">Joburg</option>
+        </select>
+      </div>
       <button type="submit" class="btn btn-amber btn-full">Save Driver</button>
     </form>
   </div>
@@ -664,6 +712,13 @@
       <div class="form-group"><label>Next Service Due (km)</label><input type="number" id="vehicle-service-km" class="form-control" min="0" placeholder="90000"></div>
       <div class="form-group"><label>Vehicle Color</label><input type="color" id="vehicle-color" class="form-control" value="#3498db"></div>
       <div class="form-group"><label>Notes</label><textarea id="vehicle-notes" class="form-control" rows="2"></textarea></div>
+      <div class="form-group">
+        <label>Location <span class="required">*</span></label>
+        <select id="vehicle-location" class="form-control">
+          <option value="Cape Town">Cape Town</option>
+          <option value="Joburg">Joburg</option>
+        </select>
+      </div>
       <button type="submit" class="btn btn-amber btn-full">Save Vehicle</button>
     </form>
   </div>
