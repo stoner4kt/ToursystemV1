@@ -623,6 +623,10 @@ async function openEditBooking(id) {
 document.getElementById('form-booking')?.addEventListener('submit', async (e) => {
   e.preventDefault();
   const id = document.getElementById('booking-id').value;
+  const invoiceNo     = document.getElementById('booking-invoice').value.trim();
+  const tourReference = document.getElementById('booking-tour-reference').value.trim();
+  const uniqueness = await validateBookingUniqueness(invoiceNo, tourReference, id || null);
+  if (!uniqueness.ok) { toast(uniqueness.message, 'error'); return; }
   const vehicle = document.getElementById('booking-vehicle').value;
   const start = document.getElementById('booking-start-date').value;
   const end = document.getElementById('booking-end-date').value;
@@ -2304,6 +2308,38 @@ async function downloadPDF(inspectionId) {
   toast('PDF downloaded', 'success');
 }
 
+
+async function validateBookingUniqueness(invoiceNo, tourReference, excludeBookingId = null) {
+  const checks = [];
+
+  let invQ = sb.from('bookings').select('id,invoice_no,client_name').ilike('invoice_no', invoiceNo);
+  if (excludeBookingId) invQ = invQ.neq('id', excludeBookingId);
+  checks.push(invQ);
+
+  if (tourReference) {
+    let refQ = sb.from('bookings').select('id,invoice_no,tour_reference,client_name').ilike('tour_reference', tourReference);
+    if (excludeBookingId) refQ = refQ.neq('id', excludeBookingId);
+    checks.push(refQ);
+  } else {
+    checks.push(Promise.resolve({ data: [] }));
+  }
+
+  const [{ data: invMatches, error: invErr }, { data: refMatches, error: refErr }] = await Promise.all(checks);
+  if (invErr) return { ok: false, message: `Could not verify invoice uniqueness: ${invErr.message}` };
+  if (refErr) return { ok: false, message: `Could not verify tour reference uniqueness: ${refErr.message}` };
+
+  const messages = [];
+  if (invMatches?.length) {
+    const b = invMatches[0];
+    messages.push(`Invoice number '${invoiceNo}' is already used by the booking for ${b.client_name || b.id}.`);
+  }
+  if (refMatches?.length) {
+    const b = refMatches[0];
+    messages.push(`Tour reference '${tourReference}' is already used by booking ${b.invoice_no} (${b.client_name || b.id}).`);
+  }
+  if (messages.length) return { ok: false, message: messages.join(' ') };
+  return { ok: true };
+}
 
 async function validateVehicleAvailability(vehicleReg,startDate,endDate,excludeBookingId=null){
   if(!vehicleReg||!startDate||!endDate) return {ok:true};
