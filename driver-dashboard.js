@@ -78,9 +78,12 @@ function renderItineraryLink(itinerary, label = '📋 View Itinerary', className
   const meta = normalizeItineraryMetadata(itinerary);
   if (!meta) return '';
 
-  const href = meta.public_id ? '#' : meta.url;
+  const directUrl = getDocumentUrl(meta);
+  const href = directUrl || (meta.public_id ? '#' : '');
+  if (!href) return '';
   const classAttr = className ? ` class="${escapeHtml(className)}"` : '';
-  return `<a href="${escapeHtml(href)}" target="_blank" rel="noopener"${classAttr} ${itineraryLinkAttrs(meta)}>${escapeHtml(label)}</a>`;
+  const extraAttrs = directUrl ? '' : ` ${itineraryLinkAttrs(meta)}`;
+  return `<a href="${escapeHtml(href)}" target="_blank" rel="noopener"${classAttr}${extraAttrs}>${escapeHtml(label)}</a>`;
 }
 
 async function handleSecureItineraryLinkClick(event) {
@@ -180,7 +183,7 @@ function renderTaskList(containerId, bookings, emptyMsg) {
           <div style="margin-top:10px">
             <a href="inspection.html" class="btn btn-amber btn-sm">+ Start Inspection</a>
           </div>` : ''}
-        ${b.itinerary_url ? `<div style="margin-top:8px"><a href="${b.itinerary_url}" target="_blank" rel="noopener" class="btn btn-sm btn-outline">📋 View Itinerary</a></div>` : ''}
+        ${itineraryLink ? `<div style="margin-top:8px">${itineraryLink}</div>` : ''}
         ${canViewDocs ? `<div style="margin-top:8px"><button type="button" class="btn btn-sm btn-outline" onclick="toggleBookingDocuments('${b.id}')">📄 Documents (${docs.length})</button><div id="task-docs-${b.id}" style="display:none;margin-top:6px">${docs.map((d)=>{const dUrl=getDocumentUrl(d);return `<div><a href="${dUrl||'#'}" target="_blank" rel="noopener">${d.filename||'Document'}</a></div>`;}).join('')}</div></div>` : ''}
         ${b.notes ? `<div style="font-size:.78rem;color:var(--text-muted);margin-top:6px">📝 ${b.notes}</div>` : ''}
       </div>`;

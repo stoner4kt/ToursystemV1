@@ -281,6 +281,25 @@ async function uploadToCloudinary(file, folder = 'inspections') {
   throw lastError;
 }
 
+// ── Signed URL helper ─────────────────────────────────────────
+async function getSignedUrl(publicId, resourceType = 'raw', asAttachment = false) {
+  if (!publicId) return null;
+  try {
+    const { data: { session } } = await sb.auth.getSession();
+    const res = await fetch(CONFIG.GET_SIGNED_URL_FUNCTION_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session?.access_token}` },
+      body: JSON.stringify({ publicId, resourceType, asAttachment }),
+    });
+    const data = await res.json().catch((err) => { console.error('[getSignedUrl] JSON parse error:', err); return null; });
+    if (!data) return null;
+    return data.signedUrl || null;
+  } catch (err) {
+    console.error('[getSignedUrl] error:', err);
+    return null;
+  }
+}
+
 // ── Fault Alert ───────────────────────────────────────────────
 async function triggerFaultAlert(inspection) {
   try {
