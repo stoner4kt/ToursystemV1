@@ -78,9 +78,12 @@ function renderItineraryLink(itinerary, label = '📋 View Itinerary', className
   const meta = normalizeItineraryMetadata(itinerary);
   if (!meta) return '';
 
-  const href = meta.public_id ? '#' : meta.url;
+  const directUrl = getDocumentUrl(meta);
+  const href = directUrl || (meta.public_id ? '#' : '');
+  if (!href) return '';
   const classAttr = className ? ` class="${escapeHtml(className)}"` : '';
-  return `<a href="${escapeHtml(href)}" target="_blank" rel="noopener"${classAttr} ${itineraryLinkAttrs(meta)}>${escapeHtml(label)}</a>`;
+  const extraAttrs = directUrl ? '' : ` ${itineraryLinkAttrs(meta)}`;
+  return `<a href="${escapeHtml(href)}" target="_blank" rel="noopener"${classAttr}${extraAttrs}>${escapeHtml(label)}</a>`;
 }
 
 async function handleSecureItineraryLinkClick(event) {

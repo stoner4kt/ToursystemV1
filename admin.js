@@ -500,10 +500,13 @@ function renderItineraryLink(itinerary, label = '📋 Itinerary', className = ''
   const meta = normalizeItineraryMetadata(itinerary);
   if (!meta) return '';
 
-  const href = meta.public_id ? '#' : meta.url;
+  const directUrl = getDocumentUrl(meta);
+  const href = directUrl || (meta.public_id ? '#' : '');
+  if (!href) return '';
   const classAttr = className ? ` class="${escapeHtml(className)}"` : '';
   const styleAttr = style ? ` style="${escapeHtml(style)}"` : '';
-  return `<a href="${escapeHtml(href)}" target="_blank" rel="noopener"${classAttr}${styleAttr} ${itineraryLinkAttrs(meta)}>${escapeHtml(label)}</a>`;
+  const extraAttrs = directUrl ? '' : ` ${itineraryLinkAttrs(meta)}`;
+  return `<a href="${escapeHtml(href)}" target="_blank" rel="noopener"${classAttr}${styleAttr}${extraAttrs}>${escapeHtml(label)}</a>`;
 }
 
 async function handleSecureItineraryLinkClick(event) {
@@ -567,15 +570,17 @@ function renderItineraryPreview(itinerary) {
   const meta = normalizeItineraryMetadata(itinerary);
   if (!meta) { el.innerHTML = ''; return; }
   const isPdf = /\.pdf$/i.test(meta.filename || '');
-  const href = meta.public_id ? '#' : (meta.url || '#');
+  const directUrl = getDocumentUrl(meta);
+  const href = directUrl || (meta.public_id ? '#' : '#');
+  const extraAttrs = directUrl ? '' : itineraryLinkAttrs(meta);
   el.innerHTML = `<div class="doc-preview-item">
     <span class="doc-preview-icon">${isPdf ? '📄' : '📎'}</span>
     <div class="doc-preview-meta">
-      <a href="${escapeHtml(href)}" target="_blank" rel="noopener" class="doc-preview-name" ${itineraryLinkAttrs(meta)}>${escapeHtml(meta.filename || 'Itinerary')}</a>
+      <a href="${escapeHtml(href)}" target="_blank" rel="noopener" class="doc-preview-name" ${extraAttrs}>${escapeHtml(meta.filename || 'Itinerary')}</a>
       <span>Current itinerary · Click to open</span>
     </div>
   </div>`;
-  bindSecureItineraryLinks(el);
+  if (!directUrl) bindSecureItineraryLinks(el);
 }
 function removeBookingDocument(i) {
   if (currentProfile?.role !== 'admin') return toast('Only admins can remove documents', 'error');
@@ -698,7 +703,7 @@ document.getElementById('form-booking')?.addEventListener('submit', async (e) =>
     try {
       toast('Uploading itinerary…', 'info');
       const itineraryUpload = await uploadToCloudinary(itineraryFile, 'booking-itinerary');
-      payload.itinerary_url         = JSON.stringify({ public_id: itineraryUpload.public_id, resource_type: itineraryUpload.resource_type, filename: itineraryFile.name });
+      payload.itinerary_url         = JSON.stringify({ public_id: itineraryUpload.public_id, resource_type: itineraryUpload.resource_type, filename: itineraryFile.name, url: itineraryUpload.url });
       payload.itinerary_filename    = itineraryFile.name;
       payload.itinerary_uploaded_at = new Date().toISOString();
     } catch (err) {
