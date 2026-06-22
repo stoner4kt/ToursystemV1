@@ -393,6 +393,7 @@ function showBookingsForDate(dateStr, cell) {
       <div style="display:flex;gap:6px;align-items:center;flex-shrink:0">
         ${statusBadge(b.status)}
         <button class="btn btn-sm btn-outline" onclick="openEditBooking('${b.id}')">Edit</button>
+        <button class="btn btn-sm btn-amber" onclick="downloadBookingPackage('${b.id}')" title="Download full booking package">⬇ Package</button>
       </div>
     </div>`).join('');
 }
@@ -763,7 +764,7 @@ async function loadBookingsArchive() {
       <td>${formatDate(b.end_date)}<br>${alertBtn}</td>
       <td>${statusBadge(b.status)}</td>
       <td>${docs.length ? `<span class="badge badge-blue">${docs.length} docs</span>` : '—'}${itineraryLink ? `<br>${itineraryLink}` : ''}</td>
-      <td><button class="btn btn-sm btn-outline" onclick="openEditBooking('${b.id}')">View Details</button>${docs.length ? ` <button class="btn btn-sm btn-amber" onclick="downloadBookingDocuments('${b.id}')">Docs</button>` : ''}</td>
+      <td><button class="btn btn-sm btn-outline" onclick="openEditBooking('${b.id}')">View Details</button>${docs.length ? ` <button class="btn btn-sm btn-amber" onclick="downloadBookingDocuments('${b.id}')">Docs</button>` : ''} <button class="btn btn-sm btn-amber" onclick="downloadBookingPackage('${b.id}')" title="Download full booking package (PDF + all attachments)">⬇ Package</button></td>
     </tr>`;
   }).join('') || `<tr><td colspan="9">No bookings found.</td></tr>`;
   bindSecureItineraryLinks(tbody);
@@ -3265,6 +3266,175 @@ async function loadAdminTrafficFines() {
 window.loadAdminTrafficFines = loadAdminTrafficFines;
 document.getElementById('fine-lookup-form')?.addEventListener('submit', lookupDriverByFineTimeDashboard);
 document.getElementById('fine-log-form')?.addEventListener('submit', submitTrafficFine);
+
+async function downloadBookingPackage(bookingId) {
+  try {
+    const { data: booking } = await sb.from('bookings').select('*').eq('id', bookingId).single();
+    if (!booking) { toast('Booking not found', 'error'); return; }
+
+    toast('Generating booking package…', 'info', 8000);
+
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+    const W = doc.internal.pageSize.getWidth();
+    const H = doc.internal.pageSize.getHeight();
+
+    // ── PAGE 1: HEADER BAND ──────────────────────────────────────
+    doc.setFillColor(15, 39, 68);
+    doc.rect(0, 0, W, 28, 'F');
+    doc.setTextColor(255, 255, 255);
+    doc.setFontSize(18); doc.setFont('helvetica', 'bold');
+    doc.text('INYATHI', 14, 13);
+    doc.setFontSize(9); doc.setFont('helvetica', 'normal');
+    doc.text(CONFIG.COMPANY_NAME || 'Fleet Management', 14, 20);
+    doc.text('BOOKING PACKAGE', W - 14, 13, { align: 'right' });
+    doc.text(formatDateTime(new Date().toISOString()), W - 14, 20, { align: 'right' });
+
+    // ── BOOKING SUMMARY TABLE ─────────────────────────────────────
+    let y = 36;
+    const bdocs = Array.isArray(booking.booking_documents) ? booking.booking_documents : [];
+    let itinMeta = null;
+    if (booking.itinerary_url) {
+      try { itinMeta = typeof booking.itinerary_url === 'string' ? JSON.parse(booking.itinerary_url) : booking.itinerary_url; } catch (_) {}
+    }
+    const vehicleStr = booking.is_rented_vehicle
+      ? ([booking.rented_vehicle_reg, booking.rented_vehicle_model].filter(Boolean).join(' ') || '(Rented — TBC)')
+      : (booking.assigned_vehicle_reg || '—');
+
+    const summaryRows = [
+      ['Invoice No',      booking.invoice_no      || '—'],
+      ['Client Name',     booking.client_name     || '—'],
+      ['Tour Reference',  booking.tour_reference  || '—'],
+      ['Location',        booking.location        || '—'],
+      ['Start Date',      formatDate(booking.start_date)],
+      ['End Date',        formatDate(booking.end_date)],
+      ['Assigned Driver', booking.assigned_driver_id || '—'],
+      ['Vehicle',         vehicleStr],
+      ['Status',          booking.status          || '—'],
+      ['Payment Status',  booking.payment_status  || '—'],
+      ['Receipt Number',  booking.receipt_number  || '—'],
+      ['Notes',           booking.notes           || '—'],
+    ];
+
+    doc.setFontSize(9);
+    summaryRows.forEach(([label, value], i) => {
+      const rowY = y + i * 6;
+      if (i % 2 === 0) { doc.setFillColor(248, 250, 252); doc.rect(14, rowY - 4.5, W - 28, 6, 'F'); }
+      doc.setTextColor(30, 41, 59);
+      doc.setFont('helvetica', 'bold');   doc.text(label + ':', 16, rowY);
+      doc.setFont('helvetica', 'normal');
+      if (label === 'Notes' && String(value).length > 55) {
+        const lines = doc.splitTextToSize(String(value), W - 90);
+        doc.text(lines, 75, rowY);
+      } else {
+        doc.text(String(value), 75, rowY);
+      }
+    });
+
+    y = y + summaryRows.length * 6 + 8;
+
+    // ── HR + FILE MANIFEST ────────────────────────────────────────
+    doc.setDrawColor(15, 39, 68); doc.setLineWidth(0.3);
+    doc.line(14, y, W - 14, y); y += 7;
+
+    doc.setTextColor(15, 39, 68); doc.setFont('helvetica', 'bold'); doc.setFontSize(10);
+    doc.text('DOCUMENTS ATTACHED', 14, y); y += 6;
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor(30, 41, 59);
+    if (bdocs.length) {
+      bdocs.forEach((d) => { doc.text(`• ${d.filename || 'Document'} — uploaded ${d.uploaded_at ? formatDate(d.uploaded_at) : 'unknown'}`, 16, y); y += 5.5; });
+    } else { doc.text('None', 16, y); y += 5.5; }
+    y += 4;
+
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(10); doc.setTextColor(15, 39, 68);
+    doc.text('ITINERARY', 14, y); y += 6;
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor(30, 41, 59);
+    if (itinMeta) { doc.text(`• ${itinMeta.filename || 'Itinerary'}`, 16, y); }
+    else           { doc.text('None', 16, y); }
+
+    // ── HELPERS ───────────────────────────────────────────────────
+    function drawAttachmentHeader(filename) {
+      doc.setFillColor(15, 39, 68); doc.rect(0, 0, W, 18, 'F');
+      doc.setTextColor(255, 255, 255); doc.setFont('helvetica', 'bold'); doc.setFontSize(9);
+      doc.text(`ATTACHMENT — ${filename || 'Document'}`, 14, 12);
+    }
+
+    async function fetchBase64(url) {
+      const res = await fetch(url);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const buffer = await res.arrayBuffer();
+      const bytes = new Uint8Array(buffer);
+      let binary = '';
+      for (let i = 0; i < bytes.byteLength; i++) binary += String.fromCharCode(bytes[i]);
+      return btoa(binary);
+    }
+
+    function isImageFile(filename, resourceType) {
+      if (resourceType === 'image') return true;
+      return ['jpg', 'jpeg', 'png', 'webp', 'gif'].includes((filename || '').toLowerCase().split('.').pop());
+    }
+
+    function imgFormat(filename, resourceType) {
+      const ext = (filename || '').toLowerCase().split('.').pop();
+      if (ext === 'png') return 'PNG';
+      if (ext === 'webp') return 'WEBP';
+      return 'JPEG';
+    }
+
+    async function addFilePage(item) {
+      const filename = item.filename || 'Document';
+      let url = null;
+      try {
+        if (item.public_id) url = await getSignedUrl(item.public_id, item.resource_type || 'raw', false);
+        if (!url) url = getDocumentUrl(item);
+        if (!url) throw new Error('No URL available');
+
+        doc.addPage();
+        drawAttachmentHeader(filename);
+
+        if (isImageFile(filename, item.resource_type)) {
+          const fmt = imgFormat(filename, item.resource_type);
+          const b64 = await fetchBase64(url);
+          const maxW = 180; const maxH = 220;
+          const imgEl = new Image();
+          await new Promise((resolve, reject) => { imgEl.onload = resolve; imgEl.onerror = reject; imgEl.src = `data:image/${fmt.toLowerCase()};base64,${b64}`; });
+          const aspect = imgEl.naturalWidth / imgEl.naturalHeight;
+          let fw, fh;
+          if (aspect >= maxW / maxH) { fw = maxW; fh = maxW / aspect; }
+          else                        { fh = maxH; fw = maxH * aspect; }
+          doc.addImage(b64, fmt, 14, 24, fw, fh);
+        } else {
+          doc.setTextColor(30, 41, 59); doc.setFont('helvetica', 'bold'); doc.setFontSize(11);
+          doc.text(`PDF document: ${filename}`, W / 2, H / 2 - 6, { align: 'center' });
+          doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor(100, 116, 139);
+          doc.text('Open separately via the Documents section.', W / 2, H / 2 + 2, { align: 'center' });
+        }
+      } catch (err) {
+        if (!doc.internal.getCurrentPageInfo || doc.internal.getNumberOfPages() === 0) doc.addPage();
+        else doc.addPage();
+        drawAttachmentHeader(filename);
+        doc.setTextColor(185, 28, 28); doc.setFont('helvetica', 'bold'); doc.setFontSize(10);
+        doc.text(`Could not embed: ${filename}`, 14, 34);
+        doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor(100, 116, 139);
+        doc.text(String(err.message || err), 14, 42);
+      }
+    }
+
+    // ── EMBED BOOKING DOCUMENTS ───────────────────────────────────
+    for (const item of bdocs) { await addFilePage(item); }
+
+    // ── EMBED ITINERARY ───────────────────────────────────────────
+    if (itinMeta) { await addFilePage(itinMeta); }
+
+    // ── SAVE ─────────────────────────────────────────────────────
+    doc.save(`INYATHI_Booking_${booking.invoice_no}_${booking.start_date}.pdf`);
+    toast('Booking package downloaded', 'success');
+
+  } catch (err) {
+    console.error('[downloadBookingPackage]', err);
+    toast(`Package generation failed: ${err.message || err}`, 'error');
+  }
+}
+window.downloadBookingPackage = downloadBookingPackage;
 
 window.addEventListener('resize', () => {
   if (document.getElementById('tab-calendar')?.classList.contains('active')) {
