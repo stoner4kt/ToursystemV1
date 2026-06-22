@@ -564,16 +564,18 @@ function renderBookingDocumentsList() {
 function renderItineraryPreview(itinerary) {
   const el = document.getElementById('booking-itinerary-preview');
   if (!el) return;
-  const itinUrl = getDocumentUrl(itinerary);
-  if (!itinUrl) { el.innerHTML = ''; return; }
-  const isPdf = /\.pdf$/i.test(itinerary?.filename || '');
+  const meta = normalizeItineraryMetadata(itinerary);
+  if (!meta) { el.innerHTML = ''; return; }
+  const isPdf = /\.pdf$/i.test(meta.filename || '');
+  const href = meta.public_id ? '#' : (meta.url || '#');
   el.innerHTML = `<div class="doc-preview-item">
     <span class="doc-preview-icon">${isPdf ? '📄' : '📎'}</span>
     <div class="doc-preview-meta">
-      <a href="${itinUrl}" target="_blank" rel="noopener" class="doc-preview-name">${itinerary?.filename || 'Itinerary'}</a>
+      <a href="${escapeHtml(href)}" target="_blank" rel="noopener" class="doc-preview-name" ${itineraryLinkAttrs(meta)}>${escapeHtml(meta.filename || 'Itinerary')}</a>
       <span>Current itinerary · Click to open</span>
     </div>
   </div>`;
+  bindSecureItineraryLinks(el);
 }
 function removeBookingDocument(i) {
   if (currentProfile?.role !== 'admin') return toast('Only admins can remove documents', 'error');
